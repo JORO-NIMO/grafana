@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Gafana - Privacy-First Zero-Data Real-Time Video Calling Engine. Consent-driven recording, embedded SMTP invite dispatcher, and zero cloud storage.">
+  <title>Gafana - Zero-Data Video Calling Engine</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Top Navigation & Room Status -->
+  <header class="gafana-header">
+    <div class="brand-section">
+      <div class="brand-logo" aria-hidden="true">G</div>
+      <div>
+        <div class="brand-name">Gafana</div>
+        <div class="engine-badge">Engine v1.2.0 (C-Core SFU)</div>
+      </div>
+      <div class="zero-data-badge" title="No database or cloud storage exists. Streams are purely volatile in-memory.">
+        <span class="pulse-dot"></span>
+        Zero Cloud Retention | End-to-End Ephemeral
+      </div>
+    </div>
+
+    <div class="room-meta">
+      <div class="pill" id="room-id-tag">Room: <strong id="room-name-display">Gafana-Secure-Room</strong></div>
+      <div class="pill" id="peer-count-tag" style="cursor:pointer;" title="Click to view peers">Active Peers: <strong id="peer-count-val">1</strong></div>
+      <div class="pill" id="timer-tag" style="font-family: 'JetBrains Mono', monospace;">00:00:00</div>
+      
+      <!-- Top Action Triggers -->
+      <button class="pill-btn command-menu-trigger" id="btn-header-menu" title="Open Gafana Command Menu (Ctrl+K)">
+        <span class="pulse-icon">⚡</span> <span>Command Menu</span>
+      </button>
+      <button class="pill-btn invite-trigger" id="btn-header-invite" title="Invite Attendees via Secure SMTP">
+        <span>✉️ Invite (SMTP)</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mid-Call Active Recording Toast Banner -->
+  <aside id="recording-toast" class="recording-bar" aria-live="assertive">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span class="rec-dot-pulse"></span>
+      <span id="rec-status-text">LOCAL CAPTURE ACTIVE - 100% Unanimous Consent Granted</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span id="rec-timer" style="font-family: 'JetBrains Mono', monospace; font-size:12px;">00:00</span>
+      <button id="btn-revoke-consent" class="btn-revoke" title="Any participant can immediately force-terminate recording for everyone">Revoke Consent</button>
+    </div>
+  </aside>
+
+  <!-- Main Conference Workspace -->
+  <main class="gafana-workspace">
+    <!-- Active Stage / Presentation Area -->
+    <section class="stage-container" id="stage-section" aria-label="Main Video & Presentation Stage">
+      <div class="stage-content" id="stage-content">
+        <!-- Self Local Video Element -->
+        <video id="local-video" autoplay playsinline muted class="main-video-feed"></video>
+        
+        <!-- Screen Sharing Video Element -->
+        <video id="screen-video" autoplay playsinline class="screen-video-feed" style="display:none;"></video>
+
+        <!-- Presentation Slide Canvas -->
+        <div class="presentation-canvas" id="pres-canvas" style="display:none;">
+          <canvas id="slide-canvas" width="1280" height="720"></canvas>
+          <div class="laser-dot" id="laser-dot"></div>
+        </div>
+
+        <!-- Video Fallback Placeholder (when camera is off) -->
+        <div id="video-placeholder" class="video-placeholder" style="display:none;">
+          <div class="large-avatar">G</div>
+          <h3>Camera Feed Paused</h3>
+          <p>Audio streaming is live via volatile in-memory RTP relay</p>
+        </div>
+      </div>
+
+      <!-- Stage Bottom Toolbar -->
+      <div class="pres-toolbar" id="stage-toolbar">
+        <div style="display:flex; align-items:center; gap:12px; font-size:13px; color:var(--text-muted);">
+          <span>Stream: <strong id="stream-resolution" style="color:var(--text-main);">720p @ 30fps</strong></span>
+          <span class="pill" id="encryption-pill" style="font-size:11px;">E2EE Active</span>
+          <span class="pill" id="smtp-badge" style="font-size:11px; background:rgba(16,185,129,0.15); color:#34d399;">SMTP Dispatcher: Ready</span>
+        </div>
+        
+        <!-- Presentation Controls (revealed when presenting) -->
+        <div id="pres-controls" style="display:none; gap:10px; align-items:center;">
+          <button class="ctrl-btn" id="btn-prev-slide" aria-label="Previous Slide">&larr; Prev</button>
+          <span style="font-size:13px; font-weight:600;" id="slide-indicator">1 / 1</span>
+          <button class="ctrl-btn" id="btn-next-slide" aria-label="Next Slide">Next &rarr;</button>
+          <button class="ctrl-btn" id="btn-laser" aria-label="Toggle Laser Pointer">🔴 Laser</button>
+          <label class="ctrl-btn" style="cursor:pointer;" title="Upload slide deck images">
+            📁 Load Slides
+            <input type="file" id="slide-file-input" accept="image/*" multiple style="display:none;">
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Side Participant Grid -->
+    <aside class="peers-container" id="peers-grid" aria-label="Participant Video Grid">
+      <div class="peer-card self-card" id="card-local-peer">
+        <div class="peer-video-wrapper">
+          <div class="peer-avatar-fallback">You</div>
+          <div class="audio-level-bar" id="local-audio-level"></div>
+        </div>
+        <div class="peer-label">
+          <span id="self-display-label">Local Host</span>
+          <span id="self-mic-status" style="color:#10b981;">🎤</span>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Bottom Interactive Control Dock -->
+  <footer class="control-dock">
+    <button class="ctrl-btn active" id="btn-mic" aria-label="Toggle Microphone">
+      <span class="btn-icon">🎤</span> <span class="btn-text">Mute</span>
+    </button>
+    <button class="ctrl-btn active" id="btn-cam" aria-label="Toggle Camera">
+      <span class="btn-icon">📹</span> <span class="btn-text">Stop Video</span>
+    </button>
+    <button class="ctrl-btn" id="btn-screenshare" aria-label="Toggle Native Screen Sharing">
+      <span class="btn-icon">🖥️</span> <span class="btn-text">Share Screen</span>
+    </button>
+    <button class="ctrl-btn" id="btn-presentation" aria-label="Toggle Synchronized Presentation">
+      <span class="btn-icon">📊</span> <span class="btn-text">Presentation</span>
+    </button>
+    <button class="ctrl-btn record-btn" id="btn-record" aria-label="Request Consensus to Record">
+      <span class="btn-icon">⏺</span> <span class="btn-text">Record Meeting</span>
+    </button>
+    <button class="ctrl-btn menu-accent-btn" id="btn-dock-menu" aria-label="Open Command Center Menu">
+      <span class="btn-icon">⚡</span> <span class="btn-text">Commands</span>
+    </button>
+    <button class="ctrl-btn invite-accent-btn" id="btn-dock-invite" aria-label="Invite via Secure SMTP">
+      <span class="btn-icon">✉️</span> <span class="btn-text">Invite</span>
+    </button>
+    <button class="ctrl-btn danger" id="btn-leave" aria-label="Leave Ephemeral Meeting">
+      <span class="btn-icon">✕</span> <span class="btn-text">Leave Call</span>
+    </button>
+  </footer>
+
+  <!-- ========================================================================= -->
+  <!-- ⚡ GAFANA COMMAND CENTER (Full Visual Menu Replacing Terminal Commands) -->
+  <!-- ========================================================================= -->
+  <div class="modal-overlay" id="command-center-modal" role="dialog" aria-modal="true" aria-labelledby="cmd-menu-title" style="display:none;">
+    <div class="command-center-box">
+      <!-- Header -->
+      <div class="cmd-center-header">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="cmd-glow-icon">⚡</div>
+          <div>
+            <h2 class="cmd-title" id="cmd-menu-title">Gafana Command Menu</h2>
+            <p class="cmd-subtitle">All native C engine controls rendered as one-click visual action buttons</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="btn-close-cmd-menu" aria-label="Close Command Menu">✕</button>
+      </div>
+
+      <!-- Live Terminal / Command Activity Feedback Screen -->
+      <div class="cmd-terminal-screen">
+        <div class="cmd-term-topbar">
+          <div class="term-dots">
+            <span class="tdot red"></span><span class="tdot yellow"></span><span class="tdot green"></span>
+          </div>
+          <span class="term-title">Gafana C-Core Live Activity Monitor</span>
+          <span class="term-zero-data">ZERO DISK WRITES</span>
+        </div>
+        <div class="cmd-term-output" id="cmd-term-output">
+          <div class="term-line info">> Gafana v1.2.0 Engine online on UDP:8765 / HTTP:7878.</div>
+          <div class="term-line success">> Ready. Click any command button below to execute without terminal.</div>
+        </div>
+      </div>
+
+      <!-- Command Buttons Categorized Grid -->
+      <div class="cmd-grid-container">
+        
+        <!-- Category: Room & Attendees -->
+        <div class="cmd-category-block">
+          <div class="category-tag">PARTICIPANTS & ACCESS</div>
+          <div class="cmd-tiles-row">
+            <button class="cmd-action-tile" id="cmd-btn-peers" title="peers: List all connected participants in the room">
+              <div class="cmd-tile-badge">peers</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">peers</div>
+                <div class="cmd-tile-desc">List all connected participants in the room.</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile tile-invite" id="cmd-btn-invite" title="invite: Configure SMTP and send secure email invitations">
+              <div class="cmd-tile-badge" style="background:#10b981; color:#030712;">invite (smtp)</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">invite via smtp</div>
+                <div class="cmd-tile-desc">Setup SMTP & invite attendees via secure email channel.</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Category: Consensus Recording -->
+        <div class="cmd-category-block">
+          <div class="category-tag">100% UNANIMOUS CONSENSUS RECORDING</div>
+          <div class="cmd-tiles-row">
+            <button class="cmd-action-tile" id="cmd-btn-record-a" title="record a: Initiate an audio-only recording consent ballot">
+              <div class="cmd-tile-badge">record a</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">record a</div>
+                <div class="cmd-tile-desc">Initiate an audio-only recording consent ballot.</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile" id="cmd-btn-record-v" title="record v: Initiate a full video + audio recording consent ballot">
+              <div class="cmd-tile-badge">record v</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">record v</div>
+                <div class="cmd-tile-desc">Initiate a full video + audio recording consent ballot.</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile tile-success" id="cmd-btn-accept" title="accept: Vote YES on a pending recording request">
+              <div class="cmd-tile-badge">accept</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">accept</div>
+                <div class="cmd-tile-desc">Vote YES on a pending recording request.</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile tile-danger" id="cmd-btn-deny" title="deny: Cast an immediate VETO on a recording request (blocks recording room-wide)">
+              <div class="cmd-tile-badge">deny</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">deny</div>
+                <div class="cmd-tile-desc">Cast an immediate VETO on a recording request (blocks recording room-wide).</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile" id="cmd-btn-startrec" title="startrec: Begin capturing media directly to your local computer (only succeeds if 100% consented)">
+              <div class="cmd-tile-badge">startrec</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">startrec</div>
+                <div class="cmd-tile-desc">Begin capturing media directly to your local computer (only succeeds if 100% consented).</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile" id="cmd-btn-stoprec" title="stoprec: Finalize and close the local recording file">
+              <div class="cmd-tile-badge">stoprec</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">stoprec</div>
+                <div class="cmd-tile-desc">Finalize and close the local recording file.</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile tile-danger" id="cmd-btn-revoke" title="revoke: Force-terminate an ongoing recording at any moment">
+              <div class="cmd-tile-badge">revoke</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">revoke</div>
+                <div class="cmd-tile-desc">Force-terminate an ongoing recording at any moment.</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Category: Media Sharing & Slides -->
+        <div class="cmd-category-block">
+          <div class="category-tag">MEDIA TRACKS & PRESENTATION</div>
+          <div class="cmd-tiles-row">
+            <button class="cmd-action-tile" id="cmd-btn-screen" title="screen: Toggle OS display/window screen sharing">
+              <div class="cmd-tile-badge">screen</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">screen</div>
+                <div class="cmd-tile-desc">Toggle OS display/window screen sharing.</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile" id="cmd-btn-present-next" title="present / next: Start synchronized slide deck presentation and advance slides">
+              <div class="cmd-tile-badge">present / next</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">present / next</div>
+                <div class="cmd-tile-desc">Start synchronized slide deck presentation and advance slides.</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Category: Engine & System -->
+        <div class="cmd-category-block">
+          <div class="category-tag">SYSTEM & EXECUTABLE CONTROL</div>
+          <div class="cmd-tiles-row">
+            <button class="cmd-action-tile" id="cmd-btn-stats" title="stats: Print packet throughput and verify zero disk writes on the server">
+              <div class="cmd-tile-badge">stats</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">stats</div>
+                <div class="cmd-tile-desc">Print packet throughput and verify zero disk writes on the server.</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile" id="cmd-btn-open" title="open: Re-open the browser tab (http://localhost:7878)">
+              <div class="cmd-tile-badge">open</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">open</div>
+                <div class="cmd-tile-desc">Re-open the browser tab (http://localhost:7878).</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile tile-quit" id="cmd-btn-quit" title="quit: Gracefully shut down all threads and exit">
+              <div class="cmd-tile-badge">quit</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name">quit</div>
+                <div class="cmd-tile-desc">Gracefully shut down all threads and exit.</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- ✉️ SECURE SMTP INVITATION MODAL                                          -->
+  <!-- ========================================================================= -->
+  <div class="modal-overlay" id="smtp-modal" role="dialog" aria-modal="true" aria-labelledby="smtp-title" style="display:none;">
+    <div class="smtp-modal-box">
+      <div class="cmd-center-header">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="cmd-glow-icon" style="background:rgba(16,185,129,0.2); color:#34d399;">✉️</div>
+          <div>
+            <h2 class="cmd-title" id="smtp-title">Secure SMTP Attendee Invitation</h2>
+            <p class="cmd-subtitle">Embedded in-memory SMTP client. Zero disk footprints.</p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="btn-close-smtp-modal" aria-label="Close SMTP Dialog">✕</button>
+      </div>
+
+      <div class="smtp-form-grid">
+        <!-- SMTP Server Configuration (Collapsible or editable) -->
+        <fieldset class="smtp-fieldset">
+          <legend>SMTP Secure Channel Configuration</legend>
+          
+          <div class="form-row">
+            <label for="smtp-preset-select">Provider Preset:</label>
+            <select id="smtp-preset-select" class="form-input">
+              <option value="gmail" selected>Google Gmail (smtp.gmail.com:587)</option>
+              <option value="outlook">Microsoft Outlook (smtp-mail.outlook.com:587)</option>
+              <option value="custom">Custom SMTP Server / Private Corporate Relay</option>
+            </select>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-row">
+              <label for="smtp-host">Host / IP:</label>
+              <input type="text" id="smtp-host" class="form-input" value="smtp.gmail.com" placeholder="e.g. smtp.gmail.com">
+            </div>
+            <div class="form-row">
+              <label for="smtp-port">Port:</label>
+              <input type="number" id="smtp-port" class="form-input" value="587">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-row">
+              <label for="smtp-user">Username / Email:</label>
+              <input type="text" id="smtp-user" class="form-input" placeholder="user@gmail.com (if auth required)">
+            </div>
+            <div class="form-row">
+              <label for="smtp-pass">App Password / Token:</label>
+              <input type="password" id="smtp-pass" class="form-input" placeholder="App password or secret">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-row">
+              <label for="smtp-sender">From Email:</label>
+              <input type="email" id="smtp-sender" class="form-input" value="host@gafana.local">
+            </div>
+            <div class="form-row">
+              <label for="smtp-name">From Name:</label>
+              <input type="text" id="smtp-name" class="form-input" value="Gafana Meeting Host">
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:flex-end;">
+            <button id="btn-save-smtp-cfg" class="btn-subtle">Save In-Memory Settings</button>
+          </div>
+        </fieldset>
+
+        <!-- Attendee Invitation Dispatch -->
+        <fieldset class="smtp-fieldset highlight-box">
+          <legend>Dispatch Meeting Invitation</legend>
+
+          <div class="form-row">
+            <label for="invite-to">Attendee Email Address(es):</label>
+            <input type="email" id="invite-to" class="form-input" placeholder="colleague@domain.com" required>
+          </div>al
+
+          <div class="form-row">
+            <label for="invite-name">Attendee Name:</label>
+            <input type="text" id="invite-name" class="form-input" placeholder="e.g. Sarah Connor">
+          </div>
+
+          <div class="form-row">
+            <label for="invite-note">Confidential Note (Optional):</label>
+            <input type="text" id="invite-note" class="form-input" value="Please join our confidential Gafana conference (100% consent required to record).">
+          </div>
+
+          <button id="btn-send-smtp-invite" class="btn-primary-send">
+            <span>🚀 Send Secure Invitation via SMTP</span>
+          </button>
+        </fieldset>
+      </div>
+
+      <!-- Live Handshake Output Log -->
+      <div class="smtp-log-container">
+        <div class="smtp-log-title">SMTP Transaction Transcript Log:</div>
+        <pre class="smtp-log-box" id="smtp-log-box">Ready. Configure SMTP or select Local Simulation to send an invite.</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- 👥 PEERS LIST MODAL                                                      -->
+  <!-- ========================================================================= -->
+  <div class="modal-overlay" id="peers-modal" role="dialog" aria-modal="true" aria-labelledby="peers-title" style="display:none;">
+    <div class="small-modal-box">
+      <div class="cmd-center-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="cmd-glow-icon">👥</div>
+          <div>
+            <h3 class="cmd-title" id="peers-title">Connected Room Participants</h3>
+            <p class="cmd-subtitle">Room: <span style="color:#00f2fe;">Gafana-Secure-Room</span></p>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="btn-close-peers-modal">✕</button>
+      </div>
+
+      <div class="peers-list" id="peers-modal-list">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div style="margin-top:16px; display:flex; gap:10px; justify-content:flex-end;">
+        <button id="btn-copy-invite-link" class="btn-subtle">📋 Copy Room Link</button>
+        <button id="btn-refresh-peers" class="btn-subtle">🔄 Refresh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- ⚠️ Consensus Voting Modal Dialog                                         -->
+  <!-- ========================================================================= -->
+  <div class="modal-overlay" id="consensus-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" style="display:none;">
+    <div class="consensus-modal">
+      <div class="modal-icon">⚠️</div>
+      <h2 class="modal-title" id="modal-title">Recording Consent Requested</h2>
+      <p class="modal-desc" id="modal-desc">
+        A participant (<strong id="rec-requester-name">Host</strong>) has requested to record this meeting directly to their local computer.
+        <br><br>
+        <strong>Gafana Consensus Rule:</strong> Recording will <strong>NEVER begin</strong> unless <strong>100% of participants affirmatively vote YES</strong>. No recording is ever stored in the cloud. If you decline, recording is strictly blocked.
+      </p>
+
+      <div class="vote-tally-box">
+        <div>Active Participants: <strong id="tally-total">1</strong></div>
+        <div>Consented (YES): <strong style="color: #10b981;" id="tally-yes">1</strong></div>
+        <div>Veto (NO): <strong style="color: #f43f5e;" id="tally-no">0</strong></div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-deny" id="btn-vote-deny">Decline & Veto</button>
+        <button class="btn-accept" id="btn-vote-accept">I Agree & Grant Consent</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="gafana_web.js"></script>
+</body>
+</html>
