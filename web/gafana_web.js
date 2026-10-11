@@ -815,7 +815,51 @@ class GafanaWebClient {
 
   initPeerSync() {
     this.pollPeers();
-    setInterval(() => this.pollPeers(), 4000);
+    this.pollConsentStatus();
+    setInterval(() => {
+      this.pollPeers();
+      this.pollConsentStatus();
+    }, 2500);
+  }
+
+  async pollConsentStatus() {
+    try {
+      const res = await fetch('/api/consent/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      // state: 0 = IDLE, 1 = REQUESTED, 2 = UNANIMOUS_OK, 3 = REJECTED, 4 = REVOKED, 5 = EXPIRED
+      if (data.state === 1) { // REQUESTED
+        this.currentBallot = {
+          id: data.ballot_id,
+          yesVotes: data.yes,
+          noVotes: data.no,
+          totalExpected: data.total
+        };
+        this.updateBallotModal();
+        if (this.modalOverlay && this.ballotState !== 'VOTED') {
+          this.modalOverlay.style.display = 'flex';
+        }
+      } else if (data.state === 2) { // UNANIMOUS_OK
+        if (this.modalOverlay) this.modalOverlay.style.display = 'none';
+        if (!this.isRecording && (this.ballotState === 'REQUESTED' || this.ballotState === 'VOTED')) {
+          this.ballotState = 'APPROVED';
+          this.startLocalRecording();
+        }
+      } else if (data.state === 3) { // REJECTED
+        if (this.modalOverlay) this.modalOverlay.style.display = 'none';
+        if (this.isRecording) this.stopLocalRecording();
+        if (this.ballotState === 'REQUESTED' || this.ballotState === 'VOTED') {
+          this.ballotState = 'REJECTED';
+          this.logTerminal('CONSENSUS REJECTED: A participant cast an immediate VETO.', 'danger');
+          alert('Recording consent was REJECTED by veto.\nIn Gafana, no recording can proceed without 100% unanimous agreement.');
+        }
+      } else if (data.state === 4) { // REVOKED
+        if (this.isRecording) {
+          this.stopLocalRecording();
+          this.logTerminal('Recording halted immediately: participant revoked consent mid-call.', 'danger');
+        }
+      }
+    } catch (_) {}
   }
 
   async pollPeers() {
@@ -946,57 +990,61 @@ class GafanaWebClient {
   // Consensus Protocol & Local Recording
   // =========================================================================
 
-  initiateRecordingConsent(type = 'av') {
+  async initiateRecordingConsent(type = 'av') {
     this.recordingType = type;
-    this.currentBallot = {
-      id: crypto.randomUUID(),
-      type: type,
-      requester: 'Local Host (You)',
-      timestamp: Date.now(),
-      yesVotes: 1, // Self auto-votes YES
-      noVotes: 0,
-      totalExpected: this.participants.length
-    };
-
     const typeLabel = (type === 'audio') ? 'Audio-Only' : 'Full Video + Audio';
-    this.logTerminal(`Recording consent ballot initiated for [${typeLabel}].`, 'info');
+    this.logTerminal(`Initiating engine consensus ballot for [${typeLabel}]...`, 'info');
 
-    if (this.participants.length <= 1) {
-      // Solo participant: immediate 100% approval
-      this.ballotState = 'APPROVED';
-      this.logTerminal('100% Unanimous approval satisfied (solo attendee). Starting capture...', 'success');
-      this.startLocalRecording();
-      return;
+    try {
+      const res = await fetch('/api/consent/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: type })
+      });
+      const data = await res.json();
+      if (data.code === 0) {
+        this.currentBallot = {
+          id: data.ballot_id,
+          type: type,
+          yesVotes: 1,
+          noVotes: 0,
+          totalExpected: Math.max(1, this.participants.length)
+        };
+        this.logTerminal(`Engine ballot #${data.ballot_id} active. Polling room consensus...`, 'info');
+      } else {
+        this.logTerminal(`Engine returned notice (code ${data.code}).`, 'warn');
+      }
+    } catch (e) {
+      this.logTerminal(`Consent request communication notice: ${e.message}`, 'warn');
     }
 
     this.ballotState = 'REQUESTED';
     this.updateBallotModal();
-    this.modalOverlay.style.display = 'flex';
+    if (this.participants.length > 1) {
+      this.modalOverlay.style.display = 'flex';
+    }
+    await this.pollConsentStatus();
   }
 
-  castVote(isYes) {
-    if (!this.currentBallot) return;
+  async castVote(isYes) {
+    const bid = this.currentBallot ? this.currentBallot.id : 0;
+    try {
+      await fetch('/api/consent/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ballot_id: bid, vote: isYes ? 1 : 0 })
+      });
+    } catch (_) {}
+
+    this.ballotState = isYes ? 'VOTED' : 'REJECTED';
+    this.modalOverlay.style.display = 'none';
+    this.logTerminal(`Cast vote on ballot #${bid}: ${isYes ? 'ACCEPT (YES)' : 'DENY (VETO)'}`, isYes ? 'info' : 'danger');
 
     if (!isYes) {
-      this.currentBallot.noVotes++;
-      this.ballotState = 'REJECTED';
-      this.modalOverlay.style.display = 'none';
-      this.logTerminal('CONSENSUS REJECTED: A participant cast an immediate VETO.', 'danger');
       alert('Recording consent was REJECTED by veto.\nIn Gafana, no recording can proceed without 100% unanimous agreement from every participant.');
       this.currentBallot = null;
-      return;
     }
-
-    this.currentBallot.yesVotes++;
-    this.updateBallotModal();
-    this.logTerminal(`Ballot vote received: ${this.currentBallot.yesVotes} of ${this.currentBallot.totalExpected} accepted.`, 'info');
-
-    if (this.currentBallot.yesVotes >= this.currentBallot.totalExpected) {
-      this.ballotState = 'APPROVED';
-      this.modalOverlay.style.display = 'none';
-      this.logTerminal('100% Unanimous agreement granted by all room participants!', 'success');
-      this.startLocalRecording();
-    }
+    await this.pollConsentStatus();
   }
 
   updateBallotModal() {
@@ -1006,7 +1054,16 @@ class GafanaWebClient {
     this.tallyNo.textContent = this.currentBallot.noVotes;
   }
 
-  revokeConsent() {
+  async revokeConsent() {
+    const bid = this.currentBallot ? this.currentBallot.id : 0;
+    try {
+      await fetch('/api/consent/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ballot_id: bid })
+      });
+    } catch (_) {}
+
     this.ballotState = 'REVOKED';
     this.logTerminal('CONSENT REVOKED! Local recording halted immediately by participant command.', 'danger');
     alert('Consent revoked! Local recording has been forcefully halted immediately.');

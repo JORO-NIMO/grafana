@@ -1,0 +1,35 @@
+# Gafana Git Ignore Rules
+# Binaries & Libraries
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.obj
+*.o
+*.def
+
+# Archives & Temporary Packages
+*.zip
+*.tar.gz
+*.7z
+
+# Audio/Video Test Recordings & Artifacts
+*.rec
+*.wav
+*.weba
+*.webm
+*.mp4
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE & Build Directories
+.vscode/
+.idea/
+build/
+bin/
+out/

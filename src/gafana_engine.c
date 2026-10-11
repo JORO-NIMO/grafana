@@ -217,12 +217,12 @@ gafana_error_t gafana_engine_poll(gafana_engine_t *engine) {
             ihdr.payload_len = nhdr->payload_len;
             ihdr.seq_num = nhdr->seq;
             ihdr.timestamp = nhdr->timestamp_ms;
-            strncpy(ihdr.sender_id, nhdr->sender_id, GAFANA_MAX_ID_LEN - 1);
-
-            uint8_t ibuf[GAFANA_MAX_PACKET_SIZE];
-            memcpy(ibuf, &ihdr, sizeof(ihdr));
-            memcpy(ibuf + sizeof(ihdr), buffer + sizeof(gafana_net_packet_header_t), nhdr->payload_len);
-            gafana_handle_packet(engine, ibuf, sizeof(ihdr) + nhdr->payload_len);
+            uint8_t ibuf[sizeof(gafana_pkt_header_t) + GAFANA_MAX_PACKET_SIZE];
+            if (sizeof(ihdr) + nhdr->payload_len <= sizeof(ibuf)) {
+                memcpy(ibuf, &ihdr, sizeof(ihdr));
+                memcpy(ibuf + sizeof(ihdr), buffer + sizeof(gafana_net_packet_header_t), nhdr->payload_len);
+                gafana_handle_packet(engine, ibuf, sizeof(ihdr) + nhdr->payload_len);
+            }
         }
     }
 

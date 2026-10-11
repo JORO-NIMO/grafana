@@ -137,6 +137,49 @@ static bool smtp_send_line(SOCKET s, const char *line, char *log_buf, size_t log
     return send(s, line, len, 0) == len;
 }
 
+static bool is_valid_email(const char *email) {
+    if (!email || strlen(email) < 3 || strlen(email) > 120) return false;
+    const char *at = strchr(email, '@');
+    if (!at || at == email || !strchr(at + 1, '.')) return false;
+    for (const char *p = email; *p; p++) {
+        if ((unsigned char)*p <= 32 || (unsigned char)*p >= 127 ||
+            *p == '\r' || *p == '\n' || *p == '<' || *p == '>' || *p == '"' || *p == '\'') {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void sanitize_header_str(const char *in, char *out, size_t out_max) {
+    size_t j = 0;
+    for (size_t i = 0; in && in[i] && j + 1 < out_max; i++) {
+        if (in[i] != '\r' && in[i] != '\n') {
+            out[j++] = in[i];
+        } else {
+            out[j++] = ' ';
+        }
+    }
+    out[j] = '\0';
+}
+
+static void html_escape(const char *in, char *out, size_t out_max) {
+    size_t j = 0;
+    for (size_t i = 0; in && in[i] && j + 6 < out_max; i++) {
+        if (in[i] == '&') {
+            memcpy(out + j, "&amp;", 5); j += 5;
+        } else if (in[i] == '<') {
+            memcpy(out + j, "&lt;", 4); j += 4;
+        } else if (in[i] == '>') {
+            memcpy(out + j, "&gt;", 4); j += 4;
+        } else if (in[i] == '"') {
+            memcpy(out + j, "&quot;", 6); j += 6;
+        } else {
+            out[j++] = in[i];
+        }
+    }
+    out[j] = '\0';
+}
+
 /* ========================================================================= */
 /* Send Meeting Invite                                                       */
 /* ========================================================================= */
@@ -150,12 +193,22 @@ gafana_error_t gafana_smtp_send_invite(
     char *out_log,
     size_t out_log_sz
 ) {
-    if (!recipient_email || !recipient_email[0] || !strchr(recipient_email, '@')) {
+    if (!is_valid_email(recipient_email)) {
         if (out_log && out_log_sz > 0) {
-            snprintf(out_log, out_log_sz, "ERROR: Invalid recipient email address '%s'.\n", recipient_email ? recipient_email : "null");
+            snprintf(out_log, out_log_sz, "ERROR: Invalid or potentially dangerous recipient email address '%s'.\n", recipient_email ? recipient_email : "null");
         }
         return GAFANA_ERR_INVALID_PARAM;
     }
+
+    char safe_rcpt_name[128], safe_sender_name[128], safe_room_id[128], safe_url[256];
+    char safe_note_plain[512], safe_note_html[1024];
+
+    sanitize_header_str(recipient_name ? recipient_name : "Attendee", safe_rcpt_name, sizeof(safe_rcpt_name));
+    sanitize_header_str(g_smtp_cfg.sender_name[0] ? g_smtp_cfg.sender_name : "Gafana Host", safe_sender_name, sizeof(safe_sender_name));
+    sanitize_header_str(room_id ? room_id : "Gafana-Room", safe_room_id, sizeof(safe_room_id));
+    sanitize_header_str(meeting_url ? meeting_url : "http://localhost:7878", safe_url, sizeof(safe_url));
+    sanitize_header_str(custom_note ? custom_note : "Confidential meeting", safe_note_plain, sizeof(safe_note_plain));
+    html_escape(safe_note_plain, safe_note_html, sizeof(safe_note_html));
 
     /* Provide sensible defaults if not yet configured */
     if (!g_smtp_has_config) {
@@ -379,17 +432,17 @@ gafana_error_t gafana_smtp_send_invite(
         "</div></body></html>\r\n"
         "--GAFANA_BOUNDARY_SECURE--\r\n"
         ".\r\n",
-        g_smtp_cfg.sender_name, g_smtp_cfg.sender_email,
-        recipient_name ? recipient_name : "Attendee", recipient_email,
-        room_id ? room_id : "Gafana-Room",
+        safe_sender_name, g_smtp_cfg.sender_email,
+        safe_rcpt_name, recipient_email,
+        safe_room_id,
         date_buf,
-        room_id ? room_id : "Gafana-Room",
-        meeting_url ? meeting_url : "http://localhost:7878",
-        custom_note && custom_note[0] ? custom_note : "Secure video call with 100% consent-driven recording.",
-        g_smtp_cfg.sender_name,
-        room_id ? room_id : "Gafana-Room",
-        custom_note && custom_note[0] ? custom_note : "Confidential meeting",
-        meeting_url ? meeting_url : "http://localhost:7878");
+        safe_room_id,
+        safe_url,
+        safe_note_plain,
+        safe_sender_name,
+        safe_room_id,
+        safe_note_html,
+        safe_url);
 
     smtp_send_line(s, msg_buf, NULL, 0);
     smtp_recv_response(s, resp, sizeof(resp), &code);

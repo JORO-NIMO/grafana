@@ -30,11 +30,25 @@ static bool json_find_string(const char *json, const char *key, char *out, size_
     if (*p != '\"') return false;
     p++;
     size_t i = 0;
-    while (*p && *p != '\"' && i + 1 < out_max) {
-        if (*p == '\\' && *(p + 1)) {
+    while (*p && i + 1 < out_max) {
+        if (*p == '\"') break;
+        if (*p == '\\') {
             p++;
+            if (!*p) break;
+            if (*p == '\"' || *p == '\\' || *p == '/') {
+                out[i++] = *p++;
+            } else if (*p == 'n') {
+                out[i++] = '\n'; p++;
+            } else if (*p == 'r') {
+                out[i++] = '\r'; p++;
+            } else if (*p == 't') {
+                out[i++] = '\t'; p++;
+            } else {
+                out[i++] = *p++;
+            }
+        } else {
+            out[i++] = *p++;
         }
-        out[i++] = *p++;
     }
     out[i] = '\0';
     return true;
@@ -110,6 +124,7 @@ static volatile bool g_running = true;
 static gafana_engine_t *g_engine = NULL;
 static uint32_t g_current_ballot = 0;
 static uint64_t g_sfu_packets_forwarded = 0;
+static gafana_mutex_t g_sfu_lock;
 
 /* ========================================================================= */
 /* Embedded Stateless SFU Relay Thread (In-Memory UDP Forwarder)            */
@@ -174,6 +189,23 @@ static void app_sfu_register_peer(app_sfu_room_t *room, const char *peer_id, con
     }
 }
 
+static void app_sfu_cleanup_stale_peers(void) {
+    time_t now = time(NULL);
+    for (int r = 0; r < SFU_MAX_ROOMS; ++r) {
+        if (!g_sfu_rooms[r].in_use) continue;
+        app_sfu_room_t *room = &g_sfu_rooms[r];
+        for (uint32_t c = 0; c < SFU_MAX_PEERS_PER_ROOM; ++c) {
+            if (room->clients[c].active && (now - room->clients[c].last_seen > 15)) {
+                room->clients[c].active = false;
+                if (room->active_clients > 0) room->active_clients--;
+            }
+        }
+        if (room->active_clients == 0) {
+            room->in_use = false;
+        }
+    }
+}
+
 static THREAD_CALL sfu_thread_func(void *arg) {
     (void)arg;
     SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -194,10 +226,11 @@ static THREAD_CALL sfu_thread_func(void *arg) {
     }
 
     uint8_t buf[2048];
-    struct sockaddr_in from;
-    socklen_t from_len = sizeof(from);
+    time_t last_cleanup = time(NULL);
 
     while (g_running) {
+        struct sockaddr_in from;
+        socklen_t from_len = sizeof(from);
         int n = recvfrom(s, (char *)buf, sizeof(buf), 0, (struct sockaddr *)&from, &from_len);
         if (n < (int)sizeof(gafana_net_packet_header_t)) {
             continue;
@@ -206,10 +239,31 @@ static THREAD_CALL sfu_thread_func(void *arg) {
         const gafana_net_packet_header_t *hdr = (const gafana_net_packet_header_t *)buf;
         if (hdr->magic != 0x47414641) continue;
 
-        app_sfu_room_t *rm = app_sfu_get_room(hdr->room_id);
-        if (!rm) continue;
+        time_t now = time(NULL);
+        gafana_mutex_lock(&g_sfu_lock);
 
-        app_sfu_register_peer(rm, hdr->sender_id, &from);
+        if (now - last_cleanup > 5) {
+            app_sfu_cleanup_stale_peers();
+            last_cleanup = now;
+        }
+
+        app_sfu_room_t *rm = app_sfu_get_room(hdr->room_id);
+        if (!rm) {
+            gafana_mutex_unlock(&g_sfu_lock);
+            continue;
+        }
+
+        if (hdr->opcode == GAFANA_OP_LEAVE) {
+            for (uint32_t i = 0; i < SFU_MAX_PEERS_PER_ROOM; ++i) {
+                if (rm->clients[i].active && strncmp(rm->clients[i].peer_id, hdr->sender_id, 64) == 0) {
+                    rm->clients[i].active = false;
+                    if (rm->active_clients > 0) rm->active_clients--;
+                    break;
+                }
+            }
+        } else {
+            app_sfu_register_peer(rm, hdr->sender_id, &from);
+        }
 
         /* In-memory packet fanout to all room peers */
         for (uint32_t i = 0; i < SFU_MAX_PEERS_PER_ROOM; ++i) {
@@ -219,9 +273,22 @@ static THREAD_CALL sfu_thread_func(void *arg) {
             }
         }
         g_sfu_packets_forwarded++;
+        gafana_mutex_unlock(&g_sfu_lock);
     }
 
     closesocket(s);
+    return 0;
+}
+
+/* Background Engine Polling Worker Thread */
+static THREAD_CALL engine_poll_thread_func(void *arg) {
+    (void)arg;
+    while (g_running) {
+        if (g_engine) {
+            gafana_engine_poll(g_engine);
+        }
+        gafana_sleep_ms(25);
+    }
     return 0;
 }
 
@@ -365,12 +432,14 @@ static THREAD_CALL http_thread_func(void *arg) {
             } else if (strcmp(path, "/api/stats") == 0) {
                 uint32_t active_rooms = 0;
                 uint32_t active_peers = 0;
+                gafana_mutex_lock(&g_sfu_lock);
                 for (int i = 0; i < SFU_MAX_ROOMS; ++i) {
                     if (g_sfu_rooms[i].in_use) {
                         active_rooms++;
                         active_peers += g_sfu_rooms[i].active_clients;
                     }
                 }
+                gafana_mutex_unlock(&g_sfu_lock);
                 char local_ip[64] = "127.0.0.1";
                 get_local_ip(local_ip, sizeof(local_ip));
                 char json[600];
@@ -404,6 +473,58 @@ static THREAD_CALL http_thread_func(void *arg) {
                 }
                 snprintf(json + offset, sizeof(json) - offset, "]}");
                 send_http_response(cs, "200 OK", "application/json", json, strlen(json));
+            } else if (strcmp(path, "/api/consent/status") == 0) {
+                gafana_consent_state_t st = GAFANA_CONSENT_IDLE;
+                uint32_t bid = 0, yes_v = 0, no_v = 0, tot_v = 0;
+                char req_id[64] = "";
+                if (g_engine) {
+                    gafana_mutex_lock(&g_engine->ballot_lock);
+                    bid = g_engine->current_ballot.ballot_id;
+                    st = g_engine->current_ballot.state;
+                    yes_v = g_engine->current_ballot.yes_votes;
+                    no_v = g_engine->current_ballot.no_votes;
+                    tot_v = g_engine->current_ballot.total_expected_votes;
+                    strncpy(req_id, g_engine->current_ballot.requester_id, sizeof(req_id) - 1);
+                    gafana_mutex_unlock(&g_engine->ballot_lock);
+                }
+                char json[512];
+                snprintf(json, sizeof(json),
+                    "{\"ballot_id\":%u,\"state\":%d,\"yes\":%u,\"no\":%u,\"total\":%u,\"requester\":\"%s\",\"recording_active\":%s}",
+                    bid, (int)st, yes_v, no_v, tot_v, req_id,
+                    (g_engine && gafana_recording_is_active(g_engine)) ? "true" : "false");
+                send_http_response(cs, "200 OK", "application/json", json, strlen(json));
+            } else if (strcmp(path, "/api/consent/request") == 0) {
+                char type_str[16] = "av";
+                json_find_string(body, "type", type_str, sizeof(type_str));
+                gafana_recording_type_t rtype = (strcmp(type_str, "audio") == 0) ? GAFANA_REC_AUDIO_ONLY : GAFANA_REC_FULL_AV;
+                uint32_t new_bid = 0;
+                gafana_error_t err = GAFANA_ERR_NOT_INITIALIZED;
+                if (g_engine) {
+                    err = gafana_recording_request_consent(g_engine, rtype, &new_bid);
+                    if (err == GAFANA_OK) g_current_ballot = new_bid;
+                }
+                char json[256];
+                snprintf(json, sizeof(json), "{\"code\":%d,\"ballot_id\":%u}", (int)err, new_bid);
+                send_http_response(cs, "200 OK", "application/json", json, strlen(json));
+            } else if (strcmp(path, "/api/consent/vote") == 0) {
+                int vote_val = json_find_int(body, "vote", 1);
+                int bid = json_find_int(body, "ballot_id", (int)g_current_ballot);
+                gafana_error_t err = GAFANA_ERR_NOT_INITIALIZED;
+                if (g_engine) {
+                    err = gafana_recording_cast_vote(g_engine, (uint32_t)bid, vote_val ? GAFANA_VOTE_ACCEPT : GAFANA_VOTE_DENY);
+                }
+                char json[128];
+                snprintf(json, sizeof(json), "{\"code\":%d}", (int)err);
+                send_http_response(cs, "200 OK", "application/json", json, strlen(json));
+            } else if (strcmp(path, "/api/consent/revoke") == 0) {
+                int bid = json_find_int(body, "ballot_id", (int)g_current_ballot);
+                gafana_error_t err = GAFANA_ERR_NOT_INITIALIZED;
+                if (g_engine) {
+                    err = gafana_recording_revoke_consent(g_engine, (uint32_t)bid);
+                }
+                char json[128];
+                snprintf(json, sizeof(json), "{\"code\":%d}", (int)err);
+                send_http_response(cs, "200 OK", "application/json", json, strlen(json));
             } else if (strcmp(path, "/api/open") == 0) {
 #if defined(_WIN32)
                 system("start http://localhost:7878");
@@ -415,6 +536,11 @@ static THREAD_CALL http_thread_func(void *arg) {
                 const char *resp = "{\"status\":\"ok\",\"url\":\"http://localhost:7878\"}";
                 send_http_response(cs, "200 OK", "application/json", resp, strlen(resp));
             } else if (strcmp(path, "/api/quit") == 0) {
+                if (client_addr.sin_addr.s_addr != htonl(INADDR_LOOPBACK)) {
+                    send_http_response(cs, "403 Forbidden", "text/plain", "Forbidden", 9);
+                    closesocket(cs);
+                    continue;
+                }
                 const char *resp = "{\"status\":\"terminating\",\"message\":\"Gafana engine shutting down gracefully.\"}";
                 send_http_response(cs, "200 OK", "application/json", resp, strlen(resp));
                 closesocket(cs);
@@ -572,6 +698,7 @@ int main(int argc, char **argv) {
 
     /* 1. Global Sockets Init */
     gafana_net_global_init();
+    gafana_mutex_init(&g_sfu_lock);
 
     /* 2. Launch Embedded SFU Relay Thread */
     printf("[1/4] Starting In-Memory Stateless SFU Relay on UDP port %u...\n", GAFANA_SFU_PORT);
@@ -614,6 +741,14 @@ int main(int argc, char **argv) {
     char my_id[32];
     snprintf(my_id, sizeof(my_id), "host_%u", (unsigned int)rand() % 9000 + 1000);
     gafana_room_join(g_engine, "Gafana-Secure-Room", my_id, "Host User");
+
+    /* Launch background engine event poll thread */
+#if defined(_WIN32)
+    _beginthreadex(NULL, 0, (unsigned (__stdcall *)(void *))engine_poll_thread_func, NULL, 0, NULL);
+#else
+    pthread_t poll_tid;
+    pthread_create(&poll_tid, NULL, engine_poll_thread_func, NULL);
+#endif
 
     /* 5. Auto-launch the web UI in the system's browser */
     printf("[4/4] Launching Web Interface in default browser...\n");
@@ -788,6 +923,7 @@ int main(int argc, char **argv) {
 
     gafana_room_leave(g_engine);
     gafana_engine_destroy(g_engine);
+    gafana_mutex_free(&g_sfu_lock);
     gafana_net_global_cleanup();
 
     printf("Gafana safely terminated. All ephemeral session memory discarded.\n");

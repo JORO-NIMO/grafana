@@ -169,7 +169,11 @@ gafana_error_t gafana_net_send(
             hdr->opcode = opcode;
             hdr->flags = 0;
             hdr->seq = net->next_seq++;
+#if defined(_WIN32)
             hdr->timestamp_ms = (uint32_t)GetTickCount();
+#else
+            hdr->timestamp_ms = 0;
+#endif
             strncpy(hdr->room_id, room_id, GAFANA_MAX_ID_LEN - 1);
             strncpy(hdr->sender_id, sender_id, GAFANA_MAX_ID_LEN - 1);
             hdr->payload_len = this_chunk_len;

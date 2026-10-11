@@ -29,6 +29,7 @@
     #define IPPROTO_TCP 6
     #define IPPROTO_UDP 17
     #define INADDR_ANY ((ULONG)0x00000000)
+    #define INADDR_LOOPBACK ((ULONG)0x7f000001)
     #define SOL_SOCKET 0xffff
     #define SO_REUSEADDR 0x0004
     #define SO_BROADCAST 0x0020
