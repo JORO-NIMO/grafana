@@ -1,0 +1,26 @@
+[package]
+name = "gafana"
+version = "1.2.0"
+edition = "2021"
+authors = ["Gafana Team"]
+description = "High-Performance, Privacy-First, Zero-Data Video Calling Engine in Pure Rust"
+
+[lib]
+name = "gafana"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gafana"
+path = "src/main.rs"
+
+[[bin]]
+name = "gafana-relay"
+path = "src/bin/gafana_relay.rs"
+
+[[example]]
+name = "consensus_test"
+path = "examples/consensus_test.rs"
+
+[dependencies]
+# Zero third-party dependencies required. Built purely on the Rust std library
+# for maximum performance, memory safety, and zero external bloat.
