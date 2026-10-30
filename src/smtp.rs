@@ -272,7 +272,7 @@ impl SmtpClient {
         }
 
         // 7. Format MIME Body
-        let now_sec = SystemTime::now()
+        let _now_sec = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
@@ -340,5 +340,41 @@ impl SmtpClient {
 
         log.push_str(&format!("SUCCESS: Secure invite sent to {}\n", recipient_email));
         (Ok(()), log)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_base64_encode() {
+        assert_eq!(SmtpClient::base64_encode(""), "");
+        assert_eq!(SmtpClient::base64_encode("f"), "Zg==");
+        assert_eq!(SmtpClient::base64_encode("fo"), "Zm8=");
+        assert_eq!(SmtpClient::base64_encode("foo"), "Zm9v");
+        assert_eq!(SmtpClient::base64_encode("foob"), "Zm9vYg==");
+        assert_eq!(SmtpClient::base64_encode("fooba"), "Zm9vYmE=");
+        assert_eq!(SmtpClient::base64_encode("foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn test_smtp_config_masking() {
+        let mut client = SmtpClient::new();
+        let mut cfg = SmtpConfig::default();
+        cfg.password = "my_secret_token".to_string();
+        client.setup(cfg);
+
+        let masked = client.get_masked_config();
+        assert_eq!(masked.password, "********");
+        assert!(masked.is_configured);
+    }
+
+    #[test]
+    fn test_invalid_email_rejected_early() {
+        let client = SmtpClient::new();
+        let (res, log) = client.send_invite("invalid-email-no-at", "User", "room-1", "http://localhost", "note");
+        assert_eq!(res.unwrap_err(), GafanaError::InvalidParam);
+        assert!(log.contains("ERROR: Invalid recipient email"));
     }
 }

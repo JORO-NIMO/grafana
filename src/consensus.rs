@@ -172,3 +172,77 @@ impl ConsensusEngine {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_solo_participant_auto_approval() {
+        let mut engine = ConsensusEngine::new(30);
+        let (bid, state) = engine.start_ballot("alice", RecordingType::FullAv, 1);
+        assert_eq!(state, ConsentState::UnanimousOk);
+        assert_eq!(engine.current_ballot.ballot_id, bid);
+        assert_eq!(engine.current_ballot.state, ConsentState::UnanimousOk);
+    }
+
+    #[test]
+    fn test_multi_participant_unanimous_approval() {
+        let mut engine = ConsensusEngine::new(30);
+        let (bid, state) = engine.start_ballot("alice", RecordingType::FullAv, 3);
+        assert_eq!(state, ConsentState::Requested);
+        assert_eq!(engine.current_ballot.yes_votes, 1); // Alice voted yes automatically
+        assert_eq!(engine.current_ballot.total_expected_votes, 3);
+
+        // Bob votes yes
+        let (s1, unanimous1) = engine.cast_vote(bid, true).expect("bob vote");
+        assert_eq!(s1, ConsentState::Requested);
+        assert!(!unanimous1);
+
+        // Charlie votes yes -> 100% agreement
+        let (s2, unanimous2) = engine.cast_vote(bid, true).expect("charlie vote");
+        assert_eq!(s2, ConsentState::UnanimousOk);
+        assert!(unanimous2);
+    }
+
+    #[test]
+    fn test_single_veto_blocks_recording() {
+        let mut engine = ConsensusEngine::new(30);
+        let (bid, state) = engine.start_ballot("alice", RecordingType::AudioOnly, 3);
+        assert_eq!(state, ConsentState::Requested);
+
+        // Bob votes yes
+        let (s1, _) = engine.cast_vote(bid, true).expect("bob vote");
+        assert_eq!(s1, ConsentState::Requested);
+
+        // Charlie casts VETO (No)
+        let (s2, unanimous) = engine.cast_vote(bid, false).expect("charlie veto");
+        assert_eq!(s2, ConsentState::Rejected);
+        assert!(!unanimous);
+        assert_eq!(engine.current_ballot.no_votes, 1);
+        assert_eq!(engine.current_ballot.state, ConsentState::Rejected);
+    }
+
+    #[test]
+    fn test_revocation_mid_call() {
+        let mut engine = ConsensusEngine::new(30);
+        let (bid, _) = engine.start_ballot("alice", RecordingType::FullAv, 1);
+        assert_eq!(engine.current_ballot.state, ConsentState::UnanimousOk);
+
+        // Anyone revokes consent
+        assert!(engine.revoke_consent(bid));
+        assert_eq!(engine.current_ballot.state, ConsentState::Revoked);
+    }
+
+    #[test]
+    fn test_reset_and_invalid_ballot_vote() {
+        let mut engine = ConsensusEngine::new(30);
+        let (bid, _) = engine.start_ballot("alice", RecordingType::FullAv, 2);
+        // Vote for incorrect ballot id
+        assert!(engine.cast_vote(bid + 999, true).is_none());
+
+        engine.reset();
+        assert_eq!(engine.current_ballot.state, ConsentState::Idle);
+        assert!(!engine.current_ballot.is_active);
+    }
+}

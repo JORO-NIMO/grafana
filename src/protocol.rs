@@ -330,3 +330,113 @@ impl PktPresentation {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_calc_fletcher32() {
+        let empty = b"";
+        let c0 = calc_fletcher32(empty);
+        assert_eq!(c0, 0xffffffff);
+
+        let data = b"GAFANA_SECURE_ZERO_DATA";
+        let c1 = calc_fletcher32(data);
+        let c2 = calc_fletcher32(data);
+        assert_eq!(c1, c2);
+        assert_ne!(c1, 0);
+
+        let data_mut = b"GAFANA_SECURE_ZERO_DATB";
+        assert_ne!(calc_fletcher32(data), calc_fletcher32(data_mut));
+    }
+
+    #[test]
+    fn test_packet_header_roundtrip() {
+        let hdr = NetPacketHeader::new(
+            GAFANA_OP_JOIN,
+            42,
+            123456,
+            "room-alpha",
+            "peer-alice-01",
+            120,
+            1,
+            2,
+            0xDEADBEEF,
+        );
+
+        let mut buf = [0u8; GAFANA_HEADER_SIZE];
+        hdr.write_to(&mut buf);
+
+        let parsed = NetPacketHeader::parse(&buf).expect("failed to parse valid header");
+        assert_eq!(parsed.magic, GAFANA_MAGIC);
+        assert_eq!(parsed.version, GAFANA_VERSION);
+        assert_eq!(parsed.opcode, GAFANA_OP_JOIN);
+        assert_eq!(parsed.seq, 42);
+        assert_eq!(parsed.timestamp_ms, 123456);
+        assert_eq!(parsed.room_id, "room-alpha");
+        assert_eq!(parsed.sender_id, "peer-alice-01");
+        assert_eq!(parsed.payload_len, 120);
+        assert_eq!(parsed.chunk_idx, 1);
+        assert_eq!(parsed.total_chunks, 2);
+        assert_eq!(parsed.checksum, 0xDEADBEEF);
+    }
+
+    #[test]
+    fn test_packet_header_invalid_magic_or_short() {
+        let buf = [0u8; GAFANA_HEADER_SIZE - 1];
+        assert!(NetPacketHeader::parse(&buf).is_none());
+
+        let mut valid_len_buf = [0u8; GAFANA_HEADER_SIZE];
+        valid_len_buf[0..4].copy_from_slice(&0x12345678u32.to_le_bytes()); // invalid magic
+        assert!(NetPacketHeader::parse(&valid_len_buf).is_none());
+    }
+
+    #[test]
+    fn test_consent_payloads_roundtrip() {
+        // 1. Consent Request
+        let req = PktConsentReq {
+            ballot_id: 505,
+            rec_type: 2,
+            timeout_sec: 45,
+            requester_id: "host_charlie".to_string(),
+        };
+        let s_req = req.serialize();
+        assert_eq!(s_req.len(), PktConsentReq::SIZE);
+        let d_req = PktConsentReq::deserialize(&s_req).expect("deserialize req");
+        assert_eq!(req, d_req);
+        assert!(PktConsentReq::deserialize(&s_req[..10]).is_none());
+
+        // 2. Consent Vote
+        let vote = PktConsentVote {
+            ballot_id: 505,
+            vote: 1,
+            voter_id: "peer_bob".to_string(),
+        };
+        let s_vote = vote.serialize();
+        let d_vote = PktConsentVote::deserialize(&s_vote).expect("deserialize vote");
+        assert_eq!(vote, d_vote);
+
+        // 3. Consent Revoke
+        let rev = PktConsentRevoke {
+            ballot_id: 505,
+            revoker_id: "peer_bob".to_string(),
+        };
+        let s_rev = rev.serialize();
+        let d_rev = PktConsentRevoke::deserialize(&s_rev).expect("deserialize revoke");
+        assert_eq!(rev, d_rev);
+
+        // 4. Presentation
+        let pres = PktPresentation {
+            event_type: 1,
+            current_slide: 3,
+            total_slides: 12,
+            pointer_x: 0.75,
+            pointer_y: 0.25,
+            color_hex: 0x00FFCC,
+        };
+        let s_pres = pres.serialize();
+        let d_pres = PktPresentation::deserialize(&s_pres).expect("deserialize pres");
+        assert_eq!(pres, d_pres);
+    }
+}

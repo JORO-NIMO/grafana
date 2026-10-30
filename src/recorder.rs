@@ -172,3 +172,58 @@ impl LocalRecorder {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn test_anti_capture_permission_check() {
+        let rec = LocalRecorder::new();
+        assert!(rec.is_recording_permitted(crate::consensus::ConsentState::UnanimousOk));
+        assert!(!rec.is_recording_permitted(crate::consensus::ConsentState::Requested));
+        assert!(!rec.is_recording_permitted(crate::consensus::ConsentState::Rejected));
+        assert!(!rec.is_recording_permitted(crate::consensus::ConsentState::Revoked));
+    }
+
+    #[test]
+    fn test_wav_recording_lifecycle() {
+        let mut rec = LocalRecorder::new();
+        let test_path = "test_temp_audio.wav";
+
+        // Clean up before test if exists
+        let _ = fs::remove_file(test_path);
+
+        assert!(rec.start(101, RecordingType::AudioOnly, test_path).is_ok());
+        assert!(rec.is_recording);
+        assert_eq!(rec.bytes_written, 44);
+
+        // Write 100 audio samples (200 bytes)
+        let samples = vec![0i16; 100];
+        assert!(rec.write_audio_samples(&samples).is_ok());
+        assert_eq!(rec.bytes_written, 244);
+        assert_eq!(rec.frames_written, 1);
+
+        assert!(rec.stop().is_ok());
+        assert!(!rec.is_recording);
+
+        // Verify file on disk
+        let metadata = fs::metadata(test_path).expect("file metadata");
+        assert_eq!(metadata.len(), 244);
+
+        let data = fs::read(test_path).expect("read file");
+        assert_eq!(&data[0..4], b"RIFF");
+        assert_eq!(&data[8..12], b"WAVE");
+        assert_eq!(&data[36..40], b"data");
+
+        // Verify patched sizes
+        let riff_size = u32::from_le_bytes(data[4..8].try_into().unwrap());
+        let data_size = u32::from_le_bytes(data[40..44].try_into().unwrap());
+        assert_eq!(data_size, 200);
+        assert_eq!(riff_size, 236);
+
+        // Cleanup
+        let _ = fs::remove_file(test_path);
+    }
+}

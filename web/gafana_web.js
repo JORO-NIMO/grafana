@@ -240,11 +240,18 @@ class GafanaWebClient {
     this.recordStartTime = 0;
     this.recordTimerInterval = null;
 
+    // Unique Peer Identity & Real-Time Mesh
+    this.myPeerId = sessionStorage.getItem('gafana_peer_id') || ('web_' + Math.random().toString(36).substring(2, 8));
+    sessionStorage.setItem('gafana_peer_id', this.myPeerId);
+    this.myDisplayName = sessionStorage.getItem('gafana_display_name') || ('User ' + this.myPeerId.substring(4));
+    this.peerConnections = new Map();
+    this._votedBallots = new Set();
+
     // Consensus Ballot State
     this.currentBallot = null;
     this.ballotState = 'IDLE'; // IDLE, REQUESTED, APPROVED, REJECTED, REVOKED
     this.participants = [
-      { id: 'self_host', name: 'Local Host (You)', hasVoted: false, vote: null, isSelf: true }
+      { id: this.myPeerId, name: `${this.myDisplayName} (You)`, hasVoted: false, vote: null, isSelf: true }
     ];
 
     // Presentation State
@@ -578,6 +585,13 @@ class GafanaWebClient {
 
       this.localVideo.srcObject = this.localStream;
       this.setupAudioAnalysis(this.localStream);
+      if (this.peerConnections) {
+        for (const pc of this.peerConnections.values()) {
+          this.localStream.getTracks().forEach(track => {
+            pc.addTrack(track, this.localStream);
+          });
+        }
+      }
       this.logTerminal('Hardware camera and microphone successfully bound.', 'success');
     } catch (err) {
       console.warn('[Gafana] Camera/Mic permission denied or not available. Using fallback privacy canvas.', err);
@@ -1236,14 +1250,49 @@ class GafanaWebClient {
     } catch (_) {}
   }
 
-  initPeerSync() {
+  async initPeerSync() {
+    await this.registerSelfPeer();
     this.pollPeers();
-    setInterval(() => this.pollPeers(), 4000);
+    setInterval(() => this.pollPeers(), 2500);
+    setInterval(() => this.sendHeartbeat(), 3500);
+    setInterval(() => this.pollConsensusStatus(), 1200);
+    setInterval(() => this.pollSignals(), 1200);
+
+    window.addEventListener('beforeunload', () => {
+      try {
+        navigator.sendBeacon('/api/peers/leave', JSON.stringify({ peer_id: this.myPeerId }));
+      } catch (_) {}
+    });
+  }
+
+  async registerSelfPeer() {
+    try {
+      await fetch('/api/peers/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ peer_id: this.myPeerId, name: this.myDisplayName })
+      });
+      const selfLabel = document.getElementById('self-display-label');
+      if (selfLabel) {
+        selfLabel.textContent = `${this.myDisplayName} (You)`;
+      }
+      this.logTerminal(`Registered as room participant: ${this.myDisplayName} [${this.myPeerId}]`, 'success');
+    } catch (_) {}
+  }
+
+  async sendHeartbeat() {
+    try {
+      await fetch('/api/peers/heartbeat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ peer_id: this.myPeerId })
+      });
+    } catch (_) {}
   }
 
   async pollPeers() {
     try {
-      const res = await fetch('/api/peers');
+      const res = await fetch(`/api/peers?peer_id=${this.myPeerId}`);
       if (!res.ok) return;
       const data = await res.json();
       const peers = data.peers || [];
@@ -1257,12 +1306,162 @@ class GafanaWebClient {
           isSelf: !!p.is_self
         }));
       }
+
+      // Reconcile WebRTC peer connections
+      for (const p of peers) {
+        if (!p.is_self && !this.peerConnections.has(p.id)) {
+          this.setupPeerConnection(p.id, p.name);
+        }
+      }
+
+      // Cleanup peers that disconnected
+      const activeIds = new Set(peers.map(p => p.id));
+      for (const [pid, pc] of this.peerConnections) {
+        if (!activeIds.has(pid)) {
+          pc.close();
+          this.peerConnections.delete(pid);
+          this.removeRemoteVideoCard(pid);
+        }
+      }
     } catch (_) {}
+  }
+
+  setupPeerConnection(remotePeerId, remoteName) {
+    const rtcConfig = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
+    };
+
+    const pc = new RTCPeerConnection(rtcConfig);
+    this.peerConnections.set(remotePeerId, pc);
+
+    // Add local tracks if available
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => {
+        pc.addTrack(track, this.localStream);
+      });
+    }
+
+    pc.ontrack = (event) => {
+      this.handleRemoteTrack(remotePeerId, remoteName, event);
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.sendSignal(remotePeerId, 'candidate', event.candidate);
+      }
+    };
+
+    // Polite peer pattern: lexicographically smaller ID initiates offer
+    if (this.myPeerId < remotePeerId) {
+      pc.onnegotiationneeded = async () => {
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          this.sendSignal(remotePeerId, 'offer', offer);
+        } catch (e) {
+          console.warn('[WebRTC] Negotiation offer error:', e);
+        }
+      };
+    }
+  }
+
+  async sendSignal(to, type, payload) {
+    try {
+      await fetch('/api/signal/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: this.myPeerId,
+          to: to,
+          type: type,
+          payload: payload
+        })
+      });
+    } catch (_) {}
+  }
+
+  async pollSignals() {
+    try {
+      const res = await fetch(`/api/signal/poll?peer_id=${this.myPeerId}`);
+      if (!res.ok) return;
+      const signals = await res.json();
+      for (const sig of signals) {
+        await this.handleIncomingSignal(sig);
+      }
+    } catch (_) {}
+  }
+
+  async handleIncomingSignal(sig) {
+    let pc = this.peerConnections.get(sig.from);
+    if (!pc) {
+      this.setupPeerConnection(sig.from, `Peer ${sig.from.substring(0, 6)}`);
+      pc = this.peerConnections.get(sig.from);
+    }
+    if (!pc) return;
+
+    try {
+      if (sig.type === 'offer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(sig.payload));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        this.sendSignal(sig.from, 'answer', answer);
+      } else if (sig.type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(sig.payload));
+      } else if (sig.type === 'candidate' && sig.payload) {
+        await pc.addIceCandidate(new RTCIceCandidate(sig.payload));
+      }
+    } catch (e) {
+      console.warn('[WebRTC] Signal handling error:', e);
+    }
+  }
+
+  handleRemoteTrack(remotePeerId, remoteName, event) {
+    const peersGrid = document.getElementById('peers-grid');
+    if (!peersGrid) return;
+
+    let card = document.getElementById(`peer-card-${remotePeerId}`);
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'peer-card';
+      card.id = `peer-card-${remotePeerId}`;
+      card.innerHTML = `
+        <div class="peer-video-wrapper">
+          <video autoplay playsinline class="remote-video" id="video-${remotePeerId}" style="width:100%; height:100%; object-fit:cover; border-radius:12px;"></video>
+        </div>
+        <div class="peer-label">
+          <span>${remoteName || remotePeerId}</span>
+          <span style="color:#10b981;">🎤 Live</span>
+        </div>
+      `;
+      peersGrid.appendChild(card);
+      this.logTerminal(`[WEBRTC P2P] Video feed linked with ${remoteName || remotePeerId}.`, 'success');
+    }
+
+    const video = card.querySelector('video');
+    if (video && event.streams && event.streams[0]) {
+      video.srcObject = event.streams[0];
+    } else if (video) {
+      if (!video.srcObject) {
+        video.srcObject = new MediaStream();
+      }
+      video.srcObject.addTrack(event.track);
+    }
+  }
+
+  removeRemoteVideoCard(remotePeerId) {
+    const card = document.getElementById(`peer-card-${remotePeerId}`);
+    if (card) {
+      card.remove();
+      this.logTerminal(`Participant ${remotePeerId} disconnected.`, 'info');
+    }
   }
 
   async fetchAndShowPeers() {
     try {
-      const res = await fetch('/api/peers');
+      const res = await fetch(`/api/peers?peer_id=${this.myPeerId}`);
       const data = await res.json();
       const peers = data.peers || [];
       if (this.peerCountVal) this.peerCountVal.textContent = peers.length;
@@ -1278,7 +1477,7 @@ class GafanaWebClient {
       }
 
       if (this.peersModalList) {
-        this.peersModalList.innerHTML = peers.map((p, idx) => `
+        this.peersModalList.innerHTML = peers.map((p) => `
           <div class="peer-list-row">
             <div>
               <div class="peer-row-name">${p.name || 'Participant'} ${p.is_self ? '<span style="color:#00f2fe; font-size:11px;">(You)</span>' : ''}</div>
@@ -1369,60 +1568,130 @@ class GafanaWebClient {
   // Consensus Protocol & Local Recording
   // =========================================================================
 
-  initiateRecordingConsent(type = 'av') {
-    this.recordingType = type;
-    this.currentBallot = {
-      id: crypto.randomUUID(),
-      type: type,
-      requester: 'Local Host (You)',
-      timestamp: Date.now(),
-      yesVotes: 1, // Self auto-votes YES
-      noVotes: 0,
-      totalExpected: this.participants.length
-    };
+  async pollConsensusStatus() {
+    try {
+      const res = await fetch('/api/consensus/status');
+      if (!res.ok) return;
+      const b = await res.json();
 
-    const typeLabel = (type === 'audio') ? 'Audio-Only' : 'Full Video + Audio';
-    this.logTerminal(`Recording consent ballot initiated for [${typeLabel}].`, 'info');
+      if (b.is_active && b.state === 'Requested') {
+        this.currentBallot = {
+          ballotId: b.ballot_id,
+          requesterId: b.requester_id,
+          recType: b.rec_type,
+          state: b.state,
+          yesVotes: b.yes_votes,
+          noVotes: b.no_votes,
+          totalExpected: b.total_expected
+        };
 
-    if (this.participants.length <= 1) {
-      // Solo participant: immediate 100% approval
-      this.ballotState = 'APPROVED';
-      this.updateConsentGuard(true);
-      this.logTerminal('100% Unanimous approval satisfied (solo attendee). Starting capture...', 'success');
-      this.startLocalRecording();
-      return;
-    }
+        if (this.tallyTotal) this.tallyTotal.textContent = b.total_expected;
+        if (this.tallyYes) this.tallyYes.textContent = b.yes_votes;
+        if (this.tallyNo) this.tallyNo.textContent = b.no_votes;
 
-    this.ballotState = 'REQUESTED';
-    this.updateConsentGuard(false);
-    this.updateBallotModal();
-    this.modalOverlay.style.display = 'flex';
+        const reqMsg = document.getElementById('consensus-req-msg');
+        if (reqMsg) {
+          const typeName = (b.rec_type === 'AudioOnly' || b.rec_type === 'audio') ? 'Audio-Only' : 'Full Video + Audio';
+          reqMsg.textContent = `${b.requester_id} is requesting 100% Unanimous Agreement to record this call [${typeName}]. Every participant has absolute veto power.`;
+        }
+
+        if (!this._votedBallots.has(b.ballot_id)) {
+          if (b.requester_id === this.myPeerId) {
+            this._votedBallots.add(b.ballot_id);
+          } else {
+            this.modalOverlay.style.display = 'flex';
+          }
+        }
+      } else if (b.state === 'UnanimousOk') {
+        this.modalOverlay.style.display = 'none';
+        if (this.ballotState !== 'APPROVED') {
+          this.ballotState = 'APPROVED';
+          this.updateConsentGuard(true);
+          this.logTerminal('100% Unanimous agreement granted by all room participants! Local recording unlocked.', 'success');
+          if (b.requester_id === this.myPeerId && !this.isRecording) {
+            this.startLocalRecording();
+          }
+        }
+      } else if (b.state === 'Rejected') {
+        this.modalOverlay.style.display = 'none';
+        if (this.ballotState === 'REQUESTED') {
+          this.ballotState = 'REJECTED';
+          this.updateConsentGuard(false);
+          this.logTerminal('RECORDING BLOCKED: A participant cast a VETO.', 'danger');
+          alert('Recording blocked! A participant exercised their veto right.\nZero bytes were captured.');
+        }
+      } else if (b.state === 'Revoked') {
+        this.modalOverlay.style.display = 'none';
+        if (this.isRecording) {
+          this.stopLocalRecording();
+          this.ballotState = 'REVOKED';
+          this.updateConsentGuard(false);
+          this.logTerminal('RECORDING HALTED: Consent was revoked mid-call.', 'danger');
+          alert('Consent revoked! Local recording has been forcefully halted immediately.');
+        }
+      }
+    } catch (_) {}
   }
 
-  castVote(isYes) {
-    if (!this.currentBallot) return;
+  async initiateRecordingConsent(type = 'av') {
+    this.recordingType = type;
+    const typeLabel = (type === 'audio') ? 'Audio-Only' : 'Full Video + Audio';
+    this.logTerminal(`Initiating unanimous consent ballot for [${typeLabel}]...`, 'info');
 
-    if (!isYes) {
-      this.currentBallot.noVotes++;
-      this.ballotState = 'REJECTED';
-      this.updateConsentGuard(false);
-      this.modalOverlay.style.display = 'none';
-      this.logTerminal('CONSENSUS REJECTED: A participant cast an immediate VETO.', 'danger');
-      alert('Recording consent was REJECTED by veto.\nIn Gafana, no recording can proceed without 100% unanimous agreement from every participant.');
-      this.currentBallot = null;
-      return;
+    try {
+      const res = await fetch('/api/consensus/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requester_id: this.myPeerId,
+          rec_type: type
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        this.ballotState = 'REQUESTED';
+        this._votedBallots.add(data.ballot_id);
+
+        if (data.state === 'UnanimousOk') {
+          this.ballotState = 'APPROVED';
+          this.updateConsentGuard(true);
+          this.logTerminal('100% Unanimous approval satisfied (solo attendee). Starting capture...', 'success');
+          this.startLocalRecording();
+        } else {
+          this.modalOverlay.style.display = 'flex';
+        }
+      }
+    } catch (e) {
+      this.logTerminal(`Ballot initiation error: ${e.message}`, 'danger');
     }
+  }
 
-    this.currentBallot.yesVotes++;
-    this.updateBallotModal();
-    this.logTerminal(`Ballot vote received: ${this.currentBallot.yesVotes} of ${this.currentBallot.totalExpected} accepted.`, 'info');
+  async castVote(isYes) {
+    if (!this.currentBallot) return;
+    const bid = this.currentBallot.ballotId;
+    this._votedBallots.add(bid);
 
-    if (this.currentBallot.yesVotes >= this.currentBallot.totalExpected) {
-      this.ballotState = 'APPROVED';
-      this.updateConsentGuard(true);
+    try {
+      const res = await fetch('/api/consensus/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ballot_id: bid,
+          voter_id: this.myPeerId,
+          accept: isYes
+        })
+      });
+      const data = await res.json();
       this.modalOverlay.style.display = 'none';
-      this.logTerminal('100% Unanimous agreement granted by all room participants!', 'success');
-      this.startLocalRecording();
+      if (!isYes) {
+        this.ballotState = 'REJECTED';
+        this.updateConsentGuard(false);
+        this.logTerminal('VETO CAST: You blocked the recording request.', 'danger');
+      } else {
+        this.logTerminal('VOTE RECORDED: You accepted the recording request.', 'success');
+      }
+    } catch (e) {
+      this.logTerminal(`Vote submission error: ${e.message}`, 'danger');
     }
   }
 
@@ -1433,11 +1702,21 @@ class GafanaWebClient {
     this.tallyNo.textContent = this.currentBallot.noVotes;
   }
 
-  revokeConsent() {
+  async revokeConsent() {
+    const bid = (this.currentBallot && this.currentBallot.ballotId) ? this.currentBallot.ballotId : 0;
+    try {
+      await fetch('/api/consensus/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ballot_id: bid,
+          revoker_id: this.myPeerId
+        })
+      });
+    } catch (_) {}
     this.ballotState = 'REVOKED';
     this.updateConsentGuard(false);
     this.logTerminal('CONSENT REVOKED! Local recording halted immediately by participant command.', 'danger');
-    alert('Consent revoked! Local recording has been forcefully halted immediately.');
     this.stopLocalRecording();
   }
 

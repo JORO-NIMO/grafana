@@ -1,7 +1,7 @@
 //! Core Gafana Media & Consensus Engine
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use crate::consensus::{ConsentState, ConsensusEngine, RecordingType};
 use crate::error::{GafanaError, GafanaResult};

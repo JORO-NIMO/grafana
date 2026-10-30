@@ -150,7 +150,7 @@ impl PeerRegistry {
             if pid == &self.self_peer_id {
                 continue;
             }
-            if node.active && (now_ms.saturating_sub(node.last_seen_ms) > timeout_ms) {
+            if node.active && (now_ms.saturating_sub(node.last_seen_ms) >= timeout_ms) {
                 node.active = false;
                 timed_out.push(pid.clone());
             }
@@ -161,5 +161,52 @@ impl PeerRegistry {
         }
 
         timed_out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_peer_registry_insert_and_heartbeat() {
+        let mut reg = PeerRegistry::new("host_1", "Host User");
+        assert_eq!(reg.active_count(), 1);
+
+        let (inserted, info) = reg.insert_or_update("peer_bob", "Bob");
+        assert!(inserted);
+        assert_eq!(info.peer_id, "peer_bob");
+        assert_eq!(reg.active_count(), 2);
+
+        // Update existing peer
+        let (inserted_again, _) = reg.insert_or_update("peer_bob", "Bob New");
+        assert!(!inserted_again);
+        assert_eq!(reg.active_count(), 2);
+
+        reg.touch_heartbeat("peer_bob");
+
+        let active = reg.list_active();
+        assert_eq!(active.len(), 2);
+    }
+
+    #[test]
+    fn test_peer_registry_remove_and_timeouts() {
+        let mut reg = PeerRegistry::new("host_1", "Host User");
+        reg.insert_or_update("peer_bob", "Bob");
+        reg.insert_or_update("peer_charlie", "Charlie");
+        assert_eq!(reg.active_count(), 3);
+
+        // Remove bob
+        assert!(reg.remove("peer_bob"));
+        assert_eq!(reg.active_count(), 2);
+
+        // Cannot remove self
+        assert!(!reg.remove("host_1"));
+        assert_eq!(reg.active_count(), 2);
+
+        // Pruning with 0 ms timeout should prune Charlie but NOT self
+        let pruned = reg.prune_timeouts(0);
+        assert!(pruned.contains(&"peer_charlie".to_string()));
+        assert_eq!(reg.active_count(), 1); // Only host_1 left
     }
 }

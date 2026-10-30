@@ -62,3 +62,22 @@ impl fmt::Display for GafanaError {
 impl std::error::Error for GafanaError {}
 
 pub type GafanaResult<T> = Result<T, GafanaError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_codes_and_display() {
+        assert_eq!(GafanaError::Ok.as_i32(), 0);
+        assert_eq!(GafanaError::InvalidParam.as_i32(), -1);
+        assert_eq!(GafanaError::ConsentDenied.as_i32(), -8);
+        assert_eq!(GafanaError::ConsentRevoked.as_i32(), -9);
+
+        let err_str = format!("{}", GafanaError::ConsentDenied);
+        assert!(err_str.contains("vetoed"));
+
+        let io_str = format!("{}", GafanaError::Io);
+        assert!(io_str.contains("disk I/O"));
+    }
+}

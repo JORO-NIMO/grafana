@@ -137,3 +137,16 @@ impl StatelessSfuRelay {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sfu_initialization() {
+        let relay = StatelessSfuRelay::new(8765);
+        assert_eq!(relay.port, 8765);
+        assert_eq!(relay.total_packets_forwarded.load(Ordering::Relaxed), 0);
+        assert_eq!(relay.total_bytes_forwarded.load(Ordering::Relaxed), 0);
+    }
+}

@@ -109,16 +109,14 @@ fn main() {
 
     // 3. Launch Embedded Web UI Server (TCP 7878)
     println!("[3/4] Starting Embedded WebRTC UI Server on http://localhost:{}...", GAFANA_HTTP_PORT);
-    let eng_for_peers = engine.clone();
+    let signal_hub = Arc::new(Mutex::new(gafana::http::SignalHub::default()));
     let http_config = HttpServerConfig {
         port: GAFANA_HTTP_PORT,
         sfu_packets: sfu_packets.clone(),
         running: running.clone(),
         smtp_client: smtp_client.clone(),
-        peers_provider: Arc::new(move || {
-            let eng = eng_for_peers.lock().unwrap();
-            eng.peers.list_active()
-        }),
+        engine: engine.clone(),
+        signal_hub: signal_hub.clone(),
     };
     EmbeddedHttpServer::new(http_config).start();
 
