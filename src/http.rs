@@ -156,9 +156,11 @@ impl EmbeddedHttpServer {
             }
             "/api/status" => {
                 let sfu_pkts = config.sfu_packets.load(Ordering::Relaxed);
+                let lan_ip = detect_lan_ip();
+                let network_url = get_shareable_url(config.port);
                 let json = format!(
-                    "{{\"status\":\"online\",\"engine\":\"Gafana-Rust\",\"version\":\"1.2.0\",\"zero_data\":true,\"sfu_packets\":{},\"local_ip\":\"127.0.0.1\",\"network_url\":\"http://127.0.0.1:{}\"}}",
-                    sfu_pkts, config.port
+                    "{{\"status\":\"online\",\"engine\":\"Gafana-Rust\",\"version\":\"1.2.0\",\"zero_data\":true,\"sfu_packets\":{},\"local_ip\":\"{}\",\"network_url\":\"{}\"}}",
+                    sfu_pkts, lan_ip, network_url
                 );
                 Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
             }
@@ -169,13 +171,15 @@ impl EmbeddedHttpServer {
                     eng.peers.prune_timeouts(15000);
                     eng.peers.active_count()
                 };
+                let lan_ip = detect_lan_ip();
+                let network_url = get_shareable_url(config.port);
                 let json = format!(
                     "{{\"status\":\"online\",\"engine\":\"Gafana-Rust\",\"version\":\"1.2.0\",\
                      \"zero_data\":true,\"sfu_packets\":{},\"server_disk_writes_bytes\":0,\
                      \"active_rooms\":1,\"active_peers\":{},\
-                     \"local_ip\":\"127.0.0.1\",\"network_url\":\"http://127.0.0.1:{}\",\
+                     \"local_ip\":\"{}\",\"network_url\":\"{}\",\
                      \"consensus_rule\":\"100% Unanimous Agreement Required\"}}",
-                    sfu_pkts, peer_count.max(1), config.port
+                    sfu_pkts, peer_count.max(1), lan_ip, network_url
                 );
                 Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
             }
@@ -571,6 +575,43 @@ pub fn extract_raw_json_field(json: &str, field: &str) -> Option<String> {
     }
 }
 
+pub fn detect_lan_ip() -> String {
+    if let Ok(ip) = std::env::var("GAFANA_HOST_IP") {
+        if !ip.trim().is_empty() {
+            return ip.trim().to_string();
+        }
+    }
+
+    if let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") {
+        if sock.connect("8.8.8.8:80").is_ok() {
+            if let Ok(addr) = sock.local_addr() {
+                let ip_str = addr.ip().to_string();
+                if ip_str != "0.0.0.0" && ip_str != "127.0.0.1" {
+                    return ip_str;
+                }
+            }
+        }
+    }
+
+    "127.0.0.1".to_string()
+}
+
+pub fn get_shareable_url(port: u16) -> String {
+    if let Ok(public_url) = std::env::var("GAFANA_PUBLIC_URL") {
+        if !public_url.trim().is_empty() {
+            return public_url.trim().trim_end_matches('/').to_string();
+        }
+    }
+    if let Ok(public_url) = std::env::var("PUBLIC_URL") {
+        if !public_url.trim().is_empty() {
+            return public_url.trim().trim_end_matches('/').to_string();
+        }
+    }
+
+    let lan_ip = detect_lan_ip();
+    format!("http://{}:{}", lan_ip, port)
+}
+
 fn fast_random_id() -> u32 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -582,6 +623,15 @@ fn fast_random_id() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_lan_ip_and_shareable_url() {
+        let ip = detect_lan_ip();
+        assert!(!ip.is_empty());
+        let url = get_shareable_url(7878);
+        assert!(url.starts_with("http://"));
+        assert!(url.ends_with(":7878"));
+    }
 
     #[test]
     fn test_extract_json_field() {

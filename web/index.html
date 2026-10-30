@@ -39,6 +39,9 @@
       <div class="pill" id="timer-tag" style="font-family: 'JetBrains Mono', monospace;">00:00:00</div>
       
       <!-- Top Action Triggers -->
+      <button class="pill-btn copy-link-trigger" id="btn-header-copy-link" title="Copy shareable meeting link to clipboard">
+        <span>📋 Copy Link</span>
+      </button>
       <button class="pill-btn command-menu-trigger" id="btn-header-menu" title="Open Gafana Command Menu (Ctrl+K)">
         <span class="pulse-icon">⚡</span> <span>Command Menu</span>
       </button>
@@ -47,6 +50,17 @@
       </button>
     </div>
   </header>
+
+  <!-- Insecure Origin HTTPS Notice Banner (automatically visible only on remote HTTP) -->
+  <aside id="https-helper-banner" class="https-helper-bar" style="display:none;" aria-live="polite">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span>⚠️</span>
+      <span id="https-helper-text">
+        <strong>Mobile / Remote Browser Notice:</strong> Browsers require <strong>HTTPS</strong> for camera & microphone. For zero-config public HTTPS, run on the host: <code>cloudflared tunnel --url http://localhost:7878</code>
+      </span>
+    </div>
+    <button id="btn-dismiss-https-banner" class="btn-subtle" style="padding:4px 10px; font-size:11px;">Dismiss ✕</button>
+  </aside>
 
   <!-- Mid-Call Active Recording Toast Banner -->
   <aside id="recording-toast" class="recording-bar" aria-live="assertive">

@@ -319,6 +319,11 @@ class GafanaWebClient {
     this.peerCountTag = document.getElementById('peer-count-tag');
     this.localAudioLevel = document.getElementById('local-audio-level');
 
+    // Header Link Copy & HTTPS Helper
+    this.btnHeaderCopyLink = document.getElementById('btn-header-copy-link');
+    this.httpsHelperBanner = document.getElementById('https-helper-banner');
+    this.btnDismissHttpsBanner = document.getElementById('btn-dismiss-https-banner');
+
     // Command Center Modal Elements
     this.cmdModal = document.getElementById('command-center-modal');
     this.btnHeaderMenu = document.getElementById('btn-header-menu');
@@ -806,6 +811,21 @@ class GafanaWebClient {
       }
     });
 
+    // Copy Meeting Link Action
+    if (this.btnHeaderCopyLink) {
+      this.btnHeaderCopyLink.addEventListener('click', () => this.copyMeetingLink());
+    }
+    if (this.btnCopyInviteLink) {
+      this.btnCopyInviteLink.addEventListener('click', () => this.copyMeetingLink());
+    }
+
+    // Dismiss Insecure Origin Banner
+    if (this.btnDismissHttpsBanner && this.httpsHelperBanner) {
+      this.btnDismissHttpsBanner.addEventListener('click', () => {
+        this.httpsHelperBanner.style.display = 'none';
+      });
+    }
+
     // Keyboard Shortcuts
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -1247,7 +1267,45 @@ class GafanaWebClient {
           this.networkUrl = data.network_url;
         }
       }
+
+      // Check for insecure context (Remote HTTP without SSL)
+      const isSecure = (window.isSecureContext === true) || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (!isSecure && this.httpsHelperBanner) {
+        this.httpsHelperBanner.style.display = 'flex';
+      }
     } catch (_) {}
+  }
+
+  copyMeetingLink() {
+    let link = this.networkUrl || window.location.href;
+    if ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && this.networkUrl) {
+      link = this.networkUrl;
+    }
+
+    navigator.clipboard.writeText(link).then(() => {
+      this.logTerminal(`Meeting link copied to clipboard: ${link}`, 'success');
+
+      if (this.btnHeaderCopyLink) {
+        const origHTML = this.btnHeaderCopyLink.innerHTML;
+        this.btnHeaderCopyLink.innerHTML = '<span>✅ Copied!</span>';
+        this.btnHeaderCopyLink.style.borderColor = '#10b981';
+        this.btnHeaderCopyLink.style.color = '#10b981';
+        setTimeout(() => {
+          this.btnHeaderCopyLink.innerHTML = origHTML;
+          this.btnHeaderCopyLink.style.borderColor = '';
+          this.btnHeaderCopyLink.style.color = '';
+        }, 2200);
+      }
+
+      if (this.btnCopyInviteLink) {
+        this.btnCopyInviteLink.textContent = '✅ Copied!';
+        setTimeout(() => {
+          this.btnCopyInviteLink.textContent = '📋 Copy Room Link';
+        }, 2200);
+      }
+    }).catch(() => {
+      prompt('Copy this confidential Gafana room link to invite participants:', link);
+    });
   }
 
   async initPeerSync() {
@@ -1330,7 +1388,19 @@ class GafanaWebClient {
     const rtcConfig = {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        {
+          urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp'
+          ],
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        }
       ]
     };
 

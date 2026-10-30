@@ -154,10 +154,14 @@ fn main() {
         }
     }
 
+    let lan_ip = gafana::http::detect_lan_ip();
+    let shareable_url = gafana::http::get_shareable_url(GAFANA_HTTP_PORT);
+
     println!("\n>>> Gafana (Rust Edition) is LIVE!");
-    println!(">>> Web UI (Local):   http://localhost:{}", GAFANA_HTTP_PORT);
-    println!(">>> UDP Relay:        127.0.0.1:{}", GAFANA_SFU_PORT);
-    println!(">>> Ephemeral Room:   'Gafana-Secure-Room' (Zero Cloud Retention)\n");
+    println!(">>> Web UI (Local):        http://localhost:{}", GAFANA_HTTP_PORT);
+    println!(">>> Shareable Network URL: {}", shareable_url);
+    println!(">>> UDP Relay (LAN):       {}:{}", lan_ip, GAFANA_SFU_PORT);
+    println!(">>> Ephemeral Room:        'Gafana-Secure-Room' (Zero Cloud Retention)\n");
 
     println!("Available Console Commands:");
     println!("  peers        - List active room participants");
