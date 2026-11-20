@@ -1,28 +1,28 @@
-//! Gafana Binary Wire Protocol Implementation
+//! Grafana Binary Wire Protocol Implementation
 //!
-//! Enforces exact 1:1 packet compatibility with C `gafana_net_packet_header_t`
+//! Enforces exact 1:1 packet compatibility with C `grafana_net_packet_header_t`
 //! and zero-overhead binary framing.
 
-pub const GAFANA_MAGIC: u32 = 0x47414641;
-pub const GAFANA_VERSION: u8 = 1;
-pub const GAFANA_MAX_ID_LEN: usize = 64;
-pub const GAFANA_MAX_NAME_LEN: usize = 128;
-pub const GAFANA_NET_MTU: usize = 1400;
-pub const GAFANA_MAX_PACKET_SIZE: usize = 1472;
-pub const GAFANA_HEADER_SIZE: usize = 154;
+pub const GRAFANA_MAGIC: u32 = 0x47414641;
+pub const GRAFANA_VERSION: u8 = 1;
+pub const GRAFANA_MAX_ID_LEN: usize = 64;
+pub const GRAFANA_MAX_NAME_LEN: usize = 128;
+pub const GRAFANA_NET_MTU: usize = 1400;
+pub const GRAFANA_MAX_PACKET_SIZE: usize = 1472;
+pub const GRAFANA_HEADER_SIZE: usize = 154;
 
-pub const GAFANA_OP_JOIN: u8 = 0x01;
-pub const GAFANA_OP_LEAVE: u8 = 0x02;
-pub const GAFANA_OP_TRACK_ANNOUNCE: u8 = 0x03;
-pub const GAFANA_OP_TRACK_REMOVE: u8 = 0x04;
-pub const GAFANA_OP_CONSENT_REQUEST: u8 = 0x10;
-pub const GAFANA_OP_CONSENT_VOTE: u8 = 0x11;
-pub const GAFANA_OP_CONSENT_DECISION: u8 = 0x12;
-pub const GAFANA_OP_CONSENT_REVOKE: u8 = 0x13;
-pub const GAFANA_OP_MEDIA_VIDEO: u8 = 0x20;
-pub const GAFANA_OP_MEDIA_AUDIO: u8 = 0x21;
-pub const GAFANA_OP_PRES_EVENT: u8 = 0x30;
-pub const GAFANA_OP_HEARTBEAT: u8 = 0x40;
+pub const GRAFANA_OP_JOIN: u8 = 0x01;
+pub const GRAFANA_OP_LEAVE: u8 = 0x02;
+pub const GRAFANA_OP_TRACK_ANNOUNCE: u8 = 0x03;
+pub const GRAFANA_OP_TRACK_REMOVE: u8 = 0x04;
+pub const GRAFANA_OP_CONSENT_REQUEST: u8 = 0x10;
+pub const GRAFANA_OP_CONSENT_VOTE: u8 = 0x11;
+pub const GRAFANA_OP_CONSENT_DECISION: u8 = 0x12;
+pub const GRAFANA_OP_CONSENT_REVOKE: u8 = 0x13;
+pub const GRAFANA_OP_MEDIA_VIDEO: u8 = 0x20;
+pub const GRAFANA_OP_MEDIA_AUDIO: u8 = 0x21;
+pub const GRAFANA_OP_PRES_EVENT: u8 = 0x30;
+pub const GRAFANA_OP_HEARTBEAT: u8 = 0x40;
 
 /// Fast Fletcher-32 Checksum Algorithm matching C implementation bit-for-bit.
 pub fn calc_fletcher32(data: &[u8]) -> u32 {
@@ -47,7 +47,7 @@ pub fn calc_fletcher32(data: &[u8]) -> u32 {
     (sum2 << 16) | sum1
 }
 
-/// Binary Packet Header matching C `gafana_net_packet_header_t`.
+/// Binary Packet Header matching C `grafana_net_packet_header_t`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetPacketHeader {
     pub magic: u32,
@@ -77,8 +77,8 @@ impl NetPacketHeader {
         checksum: u32,
     ) -> Self {
         Self {
-            magic: GAFANA_MAGIC,
-            version: GAFANA_VERSION,
+            magic: GRAFANA_MAGIC,
+            version: GRAFANA_VERSION,
             opcode,
             flags: 0,
             seq,
@@ -94,7 +94,7 @@ impl NetPacketHeader {
 
     /// Serialize header to 154-byte binary slice.
     pub fn write_to(&self, out: &mut [u8]) {
-        assert!(out.len() >= GAFANA_HEADER_SIZE);
+        assert!(out.len() >= GRAFANA_HEADER_SIZE);
         out[0..4].copy_from_slice(&self.magic.to_le_bytes());
         out[4] = self.version;
         out[5] = self.opcode;
@@ -105,13 +105,13 @@ impl NetPacketHeader {
         // Fixed 64-byte room_id
         out[16..80].fill(0);
         let room_bytes = self.room_id.as_bytes();
-        let rlen = room_bytes.len().min(GAFANA_MAX_ID_LEN - 1);
+        let rlen = room_bytes.len().min(GRAFANA_MAX_ID_LEN - 1);
         out[16..16 + rlen].copy_from_slice(&room_bytes[..rlen]);
 
         // Fixed 64-byte sender_id
         out[80..144].fill(0);
         let sender_bytes = self.sender_id.as_bytes();
-        let slen = sender_bytes.len().min(GAFANA_MAX_ID_LEN - 1);
+        let slen = sender_bytes.len().min(GRAFANA_MAX_ID_LEN - 1);
         out[80..80 + slen].copy_from_slice(&sender_bytes[..slen]);
 
         out[144..146].copy_from_slice(&self.payload_len.to_le_bytes());
@@ -122,12 +122,12 @@ impl NetPacketHeader {
 
     /// Parse header from binary slice.
     pub fn parse(buf: &[u8]) -> Option<Self> {
-        if buf.len() < GAFANA_HEADER_SIZE {
+        if buf.len() < GRAFANA_HEADER_SIZE {
             return None;
         }
 
         let magic = u32::from_le_bytes(buf[0..4].try_into().ok()?);
-        if magic != GAFANA_MAGIC {
+        if magic != GRAFANA_MAGIC {
             return None;
         }
 
@@ -177,7 +177,7 @@ pub struct PktConsentReq {
 }
 
 impl PktConsentReq {
-    pub const SIZE: usize = 4 + 1 + 4 + GAFANA_MAX_ID_LEN; // 73 bytes
+    pub const SIZE: usize = 4 + 1 + 4 + GRAFANA_MAX_ID_LEN; // 73 bytes
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut buf = vec![0u8; Self::SIZE];
@@ -185,7 +185,7 @@ impl PktConsentReq {
         buf[4] = self.rec_type;
         buf[5..9].copy_from_slice(&self.timeout_sec.to_le_bytes());
         let req_bytes = self.requester_id.as_bytes();
-        let len = req_bytes.len().min(GAFANA_MAX_ID_LEN - 1);
+        let len = req_bytes.len().min(GRAFANA_MAX_ID_LEN - 1);
         buf[9..9 + len].copy_from_slice(&req_bytes[..len]);
         buf
     }
@@ -197,8 +197,8 @@ impl PktConsentReq {
         let ballot_id = u32::from_le_bytes(buf[0..4].try_into().ok()?);
         let rec_type = buf[4];
         let timeout_sec = u32::from_le_bytes(buf[5..9].try_into().ok()?);
-        let id_slice = &buf[9..9 + GAFANA_MAX_ID_LEN];
-        let id_len = id_slice.iter().position(|&b| b == 0).unwrap_or(GAFANA_MAX_ID_LEN);
+        let id_slice = &buf[9..9 + GRAFANA_MAX_ID_LEN];
+        let id_len = id_slice.iter().position(|&b| b == 0).unwrap_or(GRAFANA_MAX_ID_LEN);
         let requester_id = String::from_utf8_lossy(&id_slice[..id_len]).to_string();
 
         Some(Self {
@@ -219,14 +219,14 @@ pub struct PktConsentVote {
 }
 
 impl PktConsentVote {
-    pub const SIZE: usize = 4 + 1 + GAFANA_MAX_ID_LEN; // 69 bytes
+    pub const SIZE: usize = 4 + 1 + GRAFANA_MAX_ID_LEN; // 69 bytes
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut buf = vec![0u8; Self::SIZE];
         buf[0..4].copy_from_slice(&self.ballot_id.to_le_bytes());
         buf[4] = self.vote;
         let v_bytes = self.voter_id.as_bytes();
-        let len = v_bytes.len().min(GAFANA_MAX_ID_LEN - 1);
+        let len = v_bytes.len().min(GRAFANA_MAX_ID_LEN - 1);
         buf[5..5 + len].copy_from_slice(&v_bytes[..len]);
         buf
     }
@@ -237,8 +237,8 @@ impl PktConsentVote {
         }
         let ballot_id = u32::from_le_bytes(buf[0..4].try_into().ok()?);
         let vote = buf[4];
-        let id_slice = &buf[5..5 + GAFANA_MAX_ID_LEN];
-        let id_len = id_slice.iter().position(|&b| b == 0).unwrap_or(GAFANA_MAX_ID_LEN);
+        let id_slice = &buf[5..5 + GRAFANA_MAX_ID_LEN];
+        let id_len = id_slice.iter().position(|&b| b == 0).unwrap_or(GRAFANA_MAX_ID_LEN);
         let voter_id = String::from_utf8_lossy(&id_slice[..id_len]).to_string();
 
         Some(Self {
@@ -257,13 +257,13 @@ pub struct PktConsentRevoke {
 }
 
 impl PktConsentRevoke {
-    pub const SIZE: usize = 4 + GAFANA_MAX_ID_LEN; // 68 bytes
+    pub const SIZE: usize = 4 + GRAFANA_MAX_ID_LEN; // 68 bytes
 
     pub fn serialize(&self) -> Vec<u8> {
         let mut buf = vec![0u8; Self::SIZE];
         buf[0..4].copy_from_slice(&self.ballot_id.to_le_bytes());
         let r_bytes = self.revoker_id.as_bytes();
-        let len = r_bytes.len().min(GAFANA_MAX_ID_LEN - 1);
+        let len = r_bytes.len().min(GRAFANA_MAX_ID_LEN - 1);
         buf[4..4 + len].copy_from_slice(&r_bytes[..len]);
         buf
     }
@@ -273,8 +273,8 @@ impl PktConsentRevoke {
             return None;
         }
         let ballot_id = u32::from_le_bytes(buf[0..4].try_into().ok()?);
-        let id_slice = &buf[4..4 + GAFANA_MAX_ID_LEN];
-        let id_len = id_slice.iter().position(|&b| b == 0).unwrap_or(GAFANA_MAX_ID_LEN);
+        let id_slice = &buf[4..4 + GRAFANA_MAX_ID_LEN];
+        let id_len = id_slice.iter().position(|&b| b == 0).unwrap_or(GRAFANA_MAX_ID_LEN);
         let revoker_id = String::from_utf8_lossy(&id_slice[..id_len]).to_string();
 
         Some(Self {
@@ -341,20 +341,20 @@ mod tests {
         let c0 = calc_fletcher32(empty);
         assert_eq!(c0, 0xffffffff);
 
-        let data = b"GAFANA_SECURE_ZERO_DATA";
+        let data = b"GRAFANA_SECURE_ZERO_DATA";
         let c1 = calc_fletcher32(data);
         let c2 = calc_fletcher32(data);
         assert_eq!(c1, c2);
         assert_ne!(c1, 0);
 
-        let data_mut = b"GAFANA_SECURE_ZERO_DATB";
+        let data_mut = b"GRAFANA_SECURE_ZERO_DATB";
         assert_ne!(calc_fletcher32(data), calc_fletcher32(data_mut));
     }
 
     #[test]
     fn test_packet_header_roundtrip() {
         let hdr = NetPacketHeader::new(
-            GAFANA_OP_JOIN,
+            GRAFANA_OP_JOIN,
             42,
             123456,
             "room-alpha",
@@ -365,13 +365,13 @@ mod tests {
             0xDEADBEEF,
         );
 
-        let mut buf = [0u8; GAFANA_HEADER_SIZE];
+        let mut buf = [0u8; GRAFANA_HEADER_SIZE];
         hdr.write_to(&mut buf);
 
         let parsed = NetPacketHeader::parse(&buf).expect("failed to parse valid header");
-        assert_eq!(parsed.magic, GAFANA_MAGIC);
-        assert_eq!(parsed.version, GAFANA_VERSION);
-        assert_eq!(parsed.opcode, GAFANA_OP_JOIN);
+        assert_eq!(parsed.magic, GRAFANA_MAGIC);
+        assert_eq!(parsed.version, GRAFANA_VERSION);
+        assert_eq!(parsed.opcode, GRAFANA_OP_JOIN);
         assert_eq!(parsed.seq, 42);
         assert_eq!(parsed.timestamp_ms, 123456);
         assert_eq!(parsed.room_id, "room-alpha");
@@ -384,10 +384,10 @@ mod tests {
 
     #[test]
     fn test_packet_header_invalid_magic_or_short() {
-        let buf = [0u8; GAFANA_HEADER_SIZE - 1];
+        let buf = [0u8; GRAFANA_HEADER_SIZE - 1];
         assert!(NetPacketHeader::parse(&buf).is_none());
 
-        let mut valid_len_buf = [0u8; GAFANA_HEADER_SIZE];
+        let mut valid_len_buf = [0u8; GRAFANA_HEADER_SIZE];
         valid_len_buf[0..4].copy_from_slice(&0x12345678u32.to_le_bytes()); // invalid magic
         assert!(NetPacketHeader::parse(&valid_len_buf).is_none());
     }

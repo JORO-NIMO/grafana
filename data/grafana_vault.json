@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@safespaceshub.com",
+      "salt": "c3361dea713cb914",
+      "password_hash": "7e483cf28e12c4f81e8401d4219a2116116ad89a74f01140eba55403ced6762e",
+      "is_verified": true,
+      "verification_code": "000000",
+      "verification_expires": 18446744073709551615,
+      "is_admin": true,
+      "created_at": 1795155149,
+      "allow_cloud_sync": true,
+      "sync_destination": "https://filefran.safespaceshub.com",
+      "backup_data": "{\"source\":\"initial_admin\",\"opt_in\":true}",
+      "last_sync_at": 1795155149
+    },
+    {
+      "username": "prof_oak",
+      "email": "oak@safespaceshub.com",
+      "salt": "00843cb2828a8726",
+      "password_hash": "7c12df42d19dc1c2e65217d264b8a79efde03bf071abce4366b00739a64a817c",
+      "is_verified": false,
+      "verification_code": "643602",
+      "verification_expires": 1795157643,
+      "is_admin": false,
+      "created_at": 1795155843,
+      "allow_cloud_sync": false,
+      "sync_destination": "https://filefran.safespaceshub.com",
+      "backup_data": null,
+      "last_sync_at": 0
+    }
+  ],
+  "backup_logs": [
+
+  ]
+}

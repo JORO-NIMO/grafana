@@ -1,116 +1,280 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Gafana - Privacy-First Zero-Data Real-Time Video Calling Engine. Consent-driven recording, embedded SMTP invite dispatcher, and zero cloud storage.">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self';">
-  <title>Gafana - Zero-Data Video Calling Engine</title>
+  <meta name="description"
+    content="Safe Spaces Grafana - Privacy-first video conference with consensus recording and direct invitations.">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self' ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self';">
+  <title>Grafana - Private Video Conference</title>
+  <link rel="icon" type="image/png" href="/logo.png">
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
 </head>
+
 <body>
 
   <!-- Top Navigation & Room Status -->
-  <header class="gafana-header">
+  <header class="grafana-header">
     <div class="brand-section">
-      <div class="brand-logo" aria-hidden="true">G</div>
-      <div>
-        <div class="brand-name">Gafana</div>
-        <div class="engine-badge">Engine v1.2.0 (Rust-Core SFU)</div>
-      </div>
-      <div class="zero-data-badge" title="No database or cloud storage exists. Streams are purely volatile in-memory.">
-        <span class="pulse-dot"></span>
-        Zero Cloud Retention | End-to-End Ephemeral
-      </div>
-      <div class="pill shield-badge" id="shield-status-badge" title="Zero-Trust Browser Extension Shield actively blocks any injected 3rd-party plugins, shadow roots, and scrapers">
-        <span>🛡️ Anti-Extension Shield Active</span>
-      </div>
-      <div class="pill anti-capture-badge" id="anti-capture-badge" title="Stops screenshots, recording, and background recording by devices until unanimous consent is granted">
-        <span>🔒 Anti-Capture Guard: ARMED</span>
-      </div>
+      <a href="#landing-hero" style="display:flex; align-items:center; gap:12px; text-decoration:none; color:inherit;">
+        <img src="/logo.png" alt="Safe Spaces Grafana Logo" class="brand-logo-img">
+        <div>
+          <div class="brand-name">Grafana</div>
+        </div>
+      </a>
     </div>
-
+    <!-- Navigation & Room Meta -->
     <div class="room-meta">
-      <div class="pill" id="room-id-tag">Room: <strong id="room-name-display">Gafana-Secure-Room</strong></div>
-      <div class="pill" id="peer-count-tag" style="cursor:pointer;" title="Click to view peers">Active Peers: <strong id="peer-count-val">1</strong></div>
-      <div class="pill" id="timer-tag" style="font-family: 'JetBrains Mono', monospace;">00:00:00</div>
-      
-      <!-- Top Action Triggers -->
-      <button class="pill-btn copy-link-trigger" id="btn-header-copy-link" title="Copy shareable meeting link to clipboard">
-        <span>📋 Copy Link</span>
-      </button>
-      <button class="pill-btn command-menu-trigger" id="btn-header-menu" title="Open Gafana Command Menu (Ctrl+K)">
-        <span class="pulse-icon">⚡</span> <span>Command Menu</span>
-      </button>
-      <button class="pill-btn invite-trigger" id="btn-header-invite" title="Invite Attendees via Secure SMTP">
-        <span>✉️ Invite (SMTP)</span>
-      </button>
-    </div>
+        <nav class="header-nav-links">
+          <a href="#landing-hero" class="nav-link" id="nav-btn-landing">Overview</a>
+          <a href="#stage-section" class="nav-link" id="nav-btn-stage">Stage</a>
+        </nav>
+
+        <div class="pill" id="room-id-tag">Room: <strong id="room-name-display">Room</strong></div>
+        <div class="pill" id="peer-count-tag" style="cursor:pointer;" title="Click to view peers">Peers: <strong
+            id="peer-count-val">1</strong></div>
+        <div class="pill" id="timer-tag" style="font-family: 'JetBrains Mono', monospace;">00:00:00</div>
+
+        <!-- Top Action Triggers -->
+        <button class="pill-btn copy-link-trigger" id="btn-header-copy-link" title="Copy shareable meeting link">
+          <span>Copy Link</span>
+        </button>
+        <button class="pill-btn" id="btn-header-autoadmit" title="Toggle Auto-Admit for joining participants">
+          <span id="autoadmit-label">Auto Admit: On</span>
+        </button>
+        <button class="pill-btn" id="btn-header-profile" title="Edit your display name and profile image">
+          <span>Profile</span>
+        </button>
+        <button class="pill-btn" id="btn-header-auth" title="Sign in or view host account">
+          <span id="header-auth-label">Sign In</span>
+        </button>
+        <button class="pill-btn" id="btn-header-sync" title="Local Data and Voluntary Cloud Backup">
+          <span id="header-sync-label">Local Data</span>
+        </button>
+        <button class="pill-btn" id="btn-header-admin" title="Admin Monitoring Dashboard" style="display:none;">
+          <span>Admin</span>
+        </button>
+        <button class="pill-btn command-menu-trigger" id="btn-header-menu" title="Open Command Menu (Ctrl+K)">
+          <span>Menu</span>
+        </button>
+        <button class="pill-btn invite-trigger" id="btn-header-invite" title="Invite Attendees">
+          <span>Invite</span>
+        </button>
+        <a href="#stage-section" class="pill-btn enter-stage-btn" id="btn-header-enter-stage"
+          title="Jump to Conference Stage">
+          <span>Enter Stage</span>
+        </a>
+      </div>
   </header>
 
-  <!-- Insecure Origin HTTPS Notice Banner (automatically visible only on remote HTTP) -->
+  <!-- Clean Landing Section for grafana.safespaceshub.com -->
+  <section class="landing-hero-section" id="landing-hero" aria-label="Grafana Conference Landing">
+    <div class="landing-container">
+
+      <div class="landing-badge-row">
+        <span class="landing-pill-tech">Private Conference</span>
+      </div>
+
+      <h1 class="landing-title">
+        Private Video Meetings
+      </h1>
+      <p class="landing-subtitle">
+        Zero-cloud video conferencing with unanimous consent recording and direct email invitations.
+      </p>
+
+      <!-- Quick Launch & Join Box -->
+      <div class="landing-launch-card">
+        <div class="launch-form-grid">
+          <div class="launch-input-group">
+            <label for="landing-display-name">Display Name</label>
+            <input type="text" id="landing-display-name" class="landing-input" placeholder="Your Name" value="Host">
+          </div>
+          <div class="launch-input-group">
+            <label for="landing-room-name">Conference Room</label>
+            <input type="text" id="landing-room-name" class="landing-input" placeholder="Room Name"
+              value="Grafana-Secure-Room">
+          </div>
+          <div class="launch-action-group">
+            <button class="landing-btn-primary" id="btn-landing-enter" title="Enter live conference stage">
+              <span>Enter Conference</span>
+            </button>
+            <button class="landing-btn-secondary" id="btn-landing-invite" title="Invite Attendees">
+              <span>Invite</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="launch-meta-strip">
+          <div class="launch-meta-item">
+            <span class="meta-dot green"></span>
+            <span>Zero Cloud Storage</span>
+          </div>
+          <div class="launch-meta-item">
+            <span class="meta-dot blue"></span>
+            <span>Direct &amp; Private</span>
+          </div>
+          <div class="launch-meta-item">
+            <span class="meta-dot purple"></span>
+            <span>Encrypted Streams</span>
+          </div>
+          <div class="launch-meta-item">
+            <span class="meta-dot amber"></span>
+            <span>Consensus Recording</span>
+          </div>
+        </div>
+      </div>
+
+            <!-- Key Capabilities Grid (4 Columns) -->
+      <div class="landing-features-grid">
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-tag">Privacy</div>
+            <h3 class="feature-title">Zero Cloud Storage</h3>
+          </div>
+          <p class="feature-text">
+            Audio and video run entirely in device memory. No recordings, databases, or tracking on our servers.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-tag">Security</div>
+            <h3 class="feature-title">Consensus Recording</h3>
+          </div>
+          <p class="feature-text">
+            Recording requires 100% attendee agreement. Any participant can revoke consent instantly.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-tag">Presentation</div>
+            <h3 class="feature-title">Screen &amp; Camera</h3>
+          </div>
+          <p class="feature-text">
+            Share presentations while keeping your camera visible in a movable, resizable overlay window.
+          </p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-header">
+            <div class="feature-tag">Invitations</div>
+            <h3 class="feature-title">Direct Email Invites</h3>
+          </div>
+          <p class="feature-text">
+            Send private meeting links directly through your domain mail server with zero third-party tracking.
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick External Links Strip -->
+      <div class="landing-links-strip">
+        <span class="strip-label">Safe Spaces Network:</span>
+        <a href="https://safespaceshub.com" target="_blank" rel="noopener noreferrer" class="strip-link">Main Portal</a>
+        <span class="strip-dot">•</span>
+        <a href="https://safespaceshub.com/reviews" target="_blank" rel="noopener noreferrer" class="strip-link">Client
+          Reviews</a>
+        <span class="strip-dot">•</span>
+        <a href="https://github.com/Safe-Spaces-AI" target="_blank" rel="noopener noreferrer"
+          class="strip-link">GitHub</a>
+        <span class="strip-dot">•</span>
+        <a href="https://x.com/SafeSpacesAIHub" target="_blank" rel="noopener noreferrer" class="strip-link">X /
+          Twitter</a>
+        <span class="strip-dot">•</span>
+        <a href="https://linkedin.com/company/safe-spacesug/" target="_blank" rel="noopener noreferrer"
+          class="strip-link">LinkedIn</a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Insecure Origin HTTPS Notice Banner -->
   <aside id="https-helper-banner" class="https-helper-bar" style="display:none;" aria-live="polite">
     <div style="display:flex; align-items:center; gap:8px;">
-      <span>⚠️</span>
       <span id="https-helper-text">
-        <strong>Mobile / Remote Browser Notice:</strong> Browsers require <strong>HTTPS</strong> for camera & microphone. For zero-config public HTTPS, run on the host: <code>cloudflared tunnel --url http://localhost:7878</code>
+        <strong>Notice:</strong> Remote browsers require HTTPS for camera and microphone access.
       </span>
     </div>
-    <button id="btn-dismiss-https-banner" class="btn-subtle" style="padding:4px 10px; font-size:11px;">Dismiss ✕</button>
+    <button id="btn-dismiss-https-banner" class="btn-subtle" style="padding:4px 10px; font-size:11px;">Dismiss</button>
   </aside>
 
   <!-- Mid-Call Active Recording Toast Banner -->
   <aside id="recording-toast" class="recording-bar" aria-live="assertive">
     <div style="display:flex; align-items:center; gap:8px;">
       <span class="rec-dot-pulse"></span>
-      <span id="rec-status-text">LOCAL CAPTURE ACTIVE - 100% Unanimous Consent Granted</span>
+      <span id="rec-status-text">Capture Active</span>
     </div>
     <div style="display:flex; align-items:center; gap:12px;">
       <span id="rec-timer" style="font-family: 'JetBrains Mono', monospace; font-size:12px;">00:00</span>
-      <button id="btn-revoke-consent" class="btn-revoke" title="Any participant can immediately force-terminate recording for everyone">Revoke Consent</button>
+      <button id="btn-revoke-consent" class="btn-revoke" title="Revoke consent and halt recording">Revoke</button>
+    </div>
+  </aside>
+
+  <!-- Admission Request Banner for Host -->
+  <aside id="admission-toast" class="admission-toast" style="display:none;" aria-live="assertive">
+    <div>
+      <strong id="admission-peer-name">User</strong>
+      <div style="font-size:12px; color:var(--text-muted);">Requesting to join</div>
+    </div>
+    <div class="admission-actions">
+      <button id="btn-admit-accept" class="btn-admit">Admit</button>
+      <button id="btn-admit-deny" class="btn-deny-admit">Deny</button>
     </div>
   </aside>
 
   <!-- Main Conference Workspace -->
-  <main class="gafana-workspace">
+  <main class="grafana-workspace">
     <!-- Active Stage / Presentation Area -->
     <section class="stage-container" id="stage-section" aria-label="Main Video & Presentation Stage">
-      <!-- Anti-Capture & Background Device Recording Protection Overlay -->
+      <!-- Anti-Capture Protection Overlay -->
       <div id="anti-capture-overlay" class="anti-capture-overlay" style="display:none;" aria-live="assertive">
         <div class="anti-capture-card">
-          <div class="anti-capture-shield-icon">🛡️</div>
-          <h3>Anti-Capture Guard Active</h3>
-          <p id="anti-capture-msg">Screenshots, local recording, and background device recording are strictly blocked until unanimous participant consent is granted.</p>
+          <h3>Guard Active</h3>
+          <p id="anti-capture-msg">Screenshots, local recording, and background capture are blocked until consensus is
+            granted.</p>
           <div class="anti-capture-indicators">
-            <span class="anti-pill">🚫 Screenshots Blocked</span>
-            <span class="anti-pill">🔇 Background Mic Halted</span>
-            <span class="anti-pill">🛑 Video Feed Concealed</span>
-            <span class="anti-pill">🔒 Unanimous Consent Required</span>
+            <span class="anti-pill">Screenshots Blocked</span>
+            <span class="anti-pill">Background Mic Suspended</span>
+            <span class="anti-pill">Video Concealed</span>
+            <span class="anti-pill">Consent Required</span>
           </div>
         </div>
       </div>
 
       <div class="stage-content" id="stage-content">
         <!-- Self Local Video Element -->
-        <video id="local-video" autoplay playsinline muted class="main-video-feed" draggable="false" oncontextmenu="return false;"></video>
-        
-        <!-- Screen Sharing Video Element -->
-        <video id="screen-video" autoplay playsinline class="screen-video-feed" style="display:none;" draggable="false" oncontextmenu="return false;"></video>
+        <video id="local-video" autoplay playsinline muted class="main-video-feed" draggable="false"
+          oncontextmenu="return false;"></video>
 
-        <!-- Presentation Slide Canvas -->
-        <div class="presentation-canvas" id="pres-canvas" style="display:none;" oncontextmenu="return false;">
-          <canvas id="slide-canvas" width="1280" height="720" draggable="false"></canvas>
-          <div class="laser-dot" id="laser-dot"></div>
+        <!-- Screen Sharing Video Element (local or remote spotlight) -->
+        <video id="screen-video" autoplay playsinline class="screen-video-feed" style="display:none;" draggable="false"
+          oncontextmenu="return false;"></video>
+
+        <!-- Floating Draggable Custom Face Cam Overlay for Screen Sharing -->
+        <div id="facecam-overlay" class="facecam-box" style="display:none;"
+          title="Drag to reposition your camera on screen">
+          <div class="facecam-header" id="facecam-drag-handle">
+            <span class="facecam-label">Face Cam</span>
+            <button id="btn-close-facecam" class="facecam-close" aria-label="Close Face Cam">Close</button>
+          </div>
+          <video id="facecam-video" autoplay playsinline muted></video>
         </div>
+
+        <!-- Hidden canvas for compositing screen + custom face camera overlay -->
+        <canvas id="composite-canvas" width="1280" height="720" style="display:none;"></canvas>
 
         <!-- Video Fallback Placeholder (when camera is off) -->
         <div id="video-placeholder" class="video-placeholder" style="display:none;">
-          <div class="large-avatar">G</div>
-          <h3>Camera Feed Paused</h3>
-          <p>Audio streaming is live via volatile in-memory RTP relay</p>
+          <div class="large-avatar" id="placeholder-avatar">G</div>
+          <h3 id="placeholder-title">Camera Off</h3>
+          <p id="placeholder-subtitle">Audio streaming is live</p>
         </div>
       </div>
 
@@ -118,20 +282,10 @@
       <div class="pres-toolbar" id="stage-toolbar">
         <div style="display:flex; align-items:center; gap:12px; font-size:13px; color:var(--text-muted);">
           <span>Stream: <strong id="stream-resolution" style="color:var(--text-main);">720p @ 30fps</strong></span>
-          <span class="pill" id="encryption-pill" style="font-size:11px;">E2EE Active</span>
-          <span class="pill" id="smtp-badge" style="font-size:11px; background:rgba(16,185,129,0.15); color:#34d399;">SMTP Dispatcher: Ready</span>
-        </div>
-        
-        <!-- Presentation Controls (revealed when presenting) -->
-        <div id="pres-controls" style="display:none; gap:10px; align-items:center;">
-          <button class="ctrl-btn" id="btn-prev-slide" aria-label="Previous Slide">&larr; Prev</button>
-          <span style="font-size:13px; font-weight:600;" id="slide-indicator">1 / 1</span>
-          <button class="ctrl-btn" id="btn-next-slide" aria-label="Next Slide">Next &rarr;</button>
-          <button class="ctrl-btn" id="btn-laser" aria-label="Toggle Laser Pointer">🔴 Laser</button>
-          <label class="ctrl-btn" style="cursor:pointer;" title="Upload slide deck images">
-            📁 Load Slides
-            <input type="file" id="slide-file-input" accept="image/*" multiple style="display:none;">
-          </label>
+          <span class="pill" id="encryption-pill" style="font-size:11px;">Direct Call</span>
+          <span class="pill" id="screen-status-pill" style="font-size:11px; display:none;">Screen Share Active</span>
+          <span class="pill" id="smtp-badge"
+            style="font-size:11px; background:var(--bg-blue-tint); color:var(--accent-blue); border:1px solid var(--border-blue);">Invites: Ready</span>
         </div>
       </div>
     </section>
@@ -140,12 +294,12 @@
     <aside class="peers-container" id="peers-grid" aria-label="Participant Video Grid">
       <div class="peer-card self-card" id="card-local-peer">
         <div class="peer-video-wrapper">
-          <div class="peer-avatar-fallback">You</div>
+          <div class="peer-avatar-fallback" id="self-avatar-preview">You</div>
           <div class="audio-level-bar" id="local-audio-level"></div>
         </div>
         <div class="peer-label">
           <span id="self-display-label">Local Host</span>
-          <span id="self-mic-status" style="color:#10b981;">🎤</span>
+          <span id="self-mic-status" class="peer-badge-live">Live</span>
         </div>
       </div>
     </aside>
@@ -154,83 +308,135 @@
   <!-- Bottom Interactive Control Dock -->
   <footer class="control-dock">
     <button class="ctrl-btn active" id="btn-mic" aria-label="Toggle Microphone">
-      <span class="btn-icon">🎤</span> <span class="btn-text">Mute</span>
+      <span class="btn-text">Mute</span>
     </button>
     <button class="ctrl-btn active" id="btn-cam" aria-label="Toggle Camera">
-      <span class="btn-icon">📹</span> <span class="btn-text">Stop Video</span>
+      <span class="btn-text">Cam</span>
     </button>
-    <button class="ctrl-btn" id="btn-screenshare" aria-label="Toggle Native Screen Sharing">
-      <span class="btn-icon">🖥️</span> <span class="btn-text">Share Screen</span>
+    <button class="ctrl-btn" id="btn-screenshare" aria-label="Toggle Screen Sharing">
+      <span class="btn-text">Share</span>
     </button>
-    <button class="ctrl-btn" id="btn-presentation" aria-label="Toggle Synchronized Presentation">
-      <span class="btn-icon">📊</span> <span class="btn-text">Presentation</span>
+    <button class="ctrl-btn" id="btn-facecam" style="display:none;" aria-label="Toggle Camera on Screen">
+      <span class="btn-text">Face Cam</span>
     </button>
-    <button class="ctrl-btn record-btn" id="btn-record" aria-label="Request Consensus to Record">
-      <span class="btn-icon">⏺</span> <span class="btn-text">Record Meeting</span>
+    <button class="ctrl-btn record-btn" id="btn-record" aria-label="Record Meeting">
+      <span class="btn-text">Record</span>
     </button>
-    <button class="ctrl-btn menu-accent-btn" id="btn-dock-menu" aria-label="Open Command Center Menu">
-      <span class="btn-icon">⚡</span> <span class="btn-text">Commands</span>
+    <button class="ctrl-btn" id="btn-dock-profile" aria-label="Edit Profile">
+      <span class="btn-text">Profile</span>
     </button>
-    <button class="ctrl-btn invite-accent-btn" id="btn-dock-invite" aria-label="Invite via Secure SMTP">
-      <span class="btn-icon">✉️</span> <span class="btn-text">Invite</span>
+    <button class="ctrl-btn menu-accent-btn" id="btn-dock-menu" aria-label="Open Menu">
+      <span class="btn-text">Menu</span>
     </button>
-    <button class="ctrl-btn danger" id="btn-leave" aria-label="Leave Ephemeral Meeting">
-      <span class="btn-icon">✕</span> <span class="btn-text">Leave Call</span>
+    <button class="ctrl-btn invite-accent-btn" id="btn-dock-invite" aria-label="Invite Guests">
+      <span class="btn-text">Invite</span>
+    </button>
+    <button class="ctrl-btn danger" id="btn-leave" aria-label="Leave Call">
+      <span class="btn-text">Leave</span>
     </button>
   </footer>
 
-  <!-- ========================================================================= -->
-  <!-- ⚡ GAFANA COMMAND CENTER (Full Visual Menu Replacing Terminal Commands) -->
-  <!-- ========================================================================= -->
-  <div class="modal-overlay" id="command-center-modal" role="dialog" aria-modal="true" aria-labelledby="cmd-menu-title" style="display:none;">
+  <!-- Profile Setup & Edit Modal -->
+  <div class="modal-overlay" id="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title"
+    style="display:none;">
+    <div class="small-modal-box">
+      <div class="cmd-center-header">
+        <div>
+          <h3 class="cmd-title" id="profile-title">Participant Profile</h3>
+          <p class="cmd-subtitle">Set your name and custom image</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-profile-modal">Close</button>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:16px; margin-top:16px;">
+        <div class="profile-preview-box" id="profile-preview-container">
+          <span id="profile-initials-preview">G</span>
+        </div>
+
+        <div class="form-row">
+          <label for="profile-name-input">Display Name:</label>
+          <input type="text" id="profile-name-input" class="form-input" placeholder="Your Name" maxlength="32">
+        </div>
+
+        <div class="form-row">
+          <label for="profile-avatar-input">Profile Picture (Image):</label>
+          <input type="file" id="profile-avatar-input" class="form-input" accept="image/*">
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:8px;">
+          <button id="btn-clear-avatar" class="btn-subtle" style="font-size:12px;">Reset Image</button>
+          <button id="btn-save-profile" class="btn-primary-send" style="padding:8px 18px; font-size:13px;">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Waiting Room Modal for Guest Knocking -->
+  <div class="modal-overlay" id="waiting-modal" role="dialog" aria-modal="true" style="display:none;">
+    <div class="small-modal-box" style="text-align:center; padding:32px 24px;">
+      <h3 style="font-size:22px; margin-bottom:12px;">Waiting Room</h3>
+      <p style="color:var(--text-muted); font-size:14px; margin-bottom:24px; line-height:1.6;">
+        The host will admit you shortly. Please wait.
+      </p>
+      <div
+        style="font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--accent-cyan); background:var(--bg-blue-tint); border:1px solid var(--border-blue); padding:8px 14px; border-radius:8px; display:inline-block;">
+        Status: Waiting for admission
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Center Modal -->
+  <div class="modal-overlay" id="command-center-modal" role="dialog" aria-modal="true" aria-labelledby="cmd-menu-title"
+    style="display:none;">
     <div class="command-center-box">
       <!-- Header -->
       <div class="cmd-center-header">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <div class="cmd-glow-icon">⚡</div>
-          <div>
-            <h2 class="cmd-title" id="cmd-menu-title">Gafana Command Menu</h2>
-            <p class="cmd-subtitle">All native C engine controls rendered as one-click visual action buttons</p>
-          </div>
+        <div>
+          <h2 class="cmd-title" id="cmd-menu-title">Actions Menu</h2>
+          <p class="cmd-subtitle">Meeting options and controls</p>
         </div>
-        <button class="modal-close-btn" id="btn-close-cmd-menu" aria-label="Close Command Menu">✕</button>
+        <button class="modal-close-btn" id="btn-close-cmd-menu" aria-label="Close Actions Menu">Close</button>
       </div>
 
-      <!-- Live Terminal / Command Activity Feedback Screen -->
+      <!-- Live Activity Feedback Screen -->
       <div class="cmd-terminal-screen">
         <div class="cmd-term-topbar">
-          <div class="term-dots">
-            <span class="tdot red"></span><span class="tdot yellow"></span><span class="tdot green"></span>
-          </div>
-          <span class="term-title">Gafana C-Core Live Activity Monitor</span>
-          <span class="term-zero-data">ZERO DISK WRITES</span>
+          <span class="term-title">Meeting Activity</span>
+          <span class="term-zero-data">Zero Cloud Data</span>
         </div>
         <div class="cmd-term-output" id="cmd-term-output">
-          <div class="term-line info">> Gafana v1.2.0 Engine online on UDP:8765 / HTTP:7878.</div>
-          <div class="term-line success">> Ready. Click any command button below to execute without terminal.</div>
+          <div class="term-line info">> Safe Spaces Grafana active.</div>
         </div>
       </div>
 
       <!-- Command Buttons Categorized Grid -->
       <div class="cmd-grid-container">
-        
+
         <!-- Category: Room & Attendees -->
         <div class="cmd-category-block">
           <div class="category-tag">PARTICIPANTS & ACCESS</div>
           <div class="cmd-tiles-row">
-            <button class="cmd-action-tile" id="cmd-btn-peers" title="peers: List all connected participants in the room">
+            <button class="cmd-action-tile" id="cmd-btn-peers" title="List all connected participants">
               <div class="cmd-tile-badge">peers</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">peers</div>
-                <div class="cmd-tile-desc">List all connected participants in the room.</div>
+                <div class="cmd-tile-name">Participants</div>
+                <div class="cmd-tile-desc">List room participants.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile tile-invite" id="cmd-btn-invite" title="invite: Configure SMTP and send secure email invitations">
-              <div class="cmd-tile-badge" style="background:#10b981; color:#030712;">invite (smtp)</div>
+            <button class="cmd-action-tile tile-invite" id="cmd-btn-invite" title="Send invitations">
+              <div class="cmd-tile-badge">invite</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">invite via smtp</div>
-                <div class="cmd-tile-desc">Setup SMTP & invite attendees via secure email channel.</div>
+                <div class="cmd-tile-name">Invite</div>
+                <div class="cmd-tile-desc">Invite attendees by email.</div>
+              </div>
+            </button>
+
+            <button class="cmd-action-tile" id="cmd-btn-toggle-autoadmit" title="Toggle Auto-Admit mode">
+              <div class="cmd-tile-badge">access</div>
+              <div class="cmd-tile-body">
+                <div class="cmd-tile-name" id="cmd-autoadmit-title">Auto Admit</div>
+                <div class="cmd-tile-desc">Toggle automatic guest admission.</div>
               </div>
             </button>
           </div>
@@ -238,61 +444,61 @@
 
         <!-- Category: Consensus Recording -->
         <div class="cmd-category-block">
-          <div class="category-tag">100% UNANIMOUS CONSENSUS RECORDING</div>
+          <div class="category-tag">RECORDING CONSENT</div>
           <div class="cmd-tiles-row">
-            <button class="cmd-action-tile" id="cmd-btn-record-a" title="record a: Initiate an audio-only recording consent ballot">
-              <div class="cmd-tile-badge">record a</div>
+            <button class="cmd-action-tile" id="cmd-btn-record-a" title="Request audio recording">
+              <div class="cmd-tile-badge">audio</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">record a</div>
-                <div class="cmd-tile-desc">Initiate an audio-only recording consent ballot.</div>
+                <div class="cmd-tile-name">Record Audio</div>
+                <div class="cmd-tile-desc">Request audio recording.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile" id="cmd-btn-record-v" title="record v: Initiate a full video + audio recording consent ballot">
-              <div class="cmd-tile-badge">record v</div>
+            <button class="cmd-action-tile" id="cmd-btn-record-v" title="Request video and audio recording">
+              <div class="cmd-tile-badge">video</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">record v</div>
-                <div class="cmd-tile-desc">Initiate a full video + audio recording consent ballot.</div>
+                <div class="cmd-tile-name">Record Video</div>
+                <div class="cmd-tile-desc">Full video and audio recording.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile tile-success" id="cmd-btn-accept" title="accept: Vote YES on a pending recording request">
-              <div class="cmd-tile-badge">accept</div>
+            <button class="cmd-action-tile tile-success" id="cmd-btn-accept" title="Vote YES on pending request">
+              <div class="cmd-tile-badge">agree</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">accept</div>
-                <div class="cmd-tile-desc">Vote YES on a pending recording request.</div>
+                <div class="cmd-tile-name">Agree</div>
+                <div class="cmd-tile-desc">Agree to recording request.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile tile-danger" id="cmd-btn-deny" title="deny: Cast an immediate VETO on a recording request (blocks recording room-wide)">
+            <button class="cmd-action-tile tile-danger" id="cmd-btn-deny" title="Cast VETO on recording request">
               <div class="cmd-tile-badge">deny</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">deny</div>
-                <div class="cmd-tile-desc">Cast an immediate VETO on a recording request (blocks recording room-wide).</div>
+                <div class="cmd-tile-name">Deny</div>
+                <div class="cmd-tile-desc">Veto recording request.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile" id="cmd-btn-startrec" title="startrec: Begin capturing media directly to your local computer (only succeeds if 100% consented)">
-              <div class="cmd-tile-badge">startrec</div>
+            <button class="cmd-action-tile" id="cmd-btn-startrec" title="Begin saving recording">
+              <div class="cmd-tile-badge">start</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">startrec</div>
-                <div class="cmd-tile-desc">Begin capturing media directly to your local computer (only succeeds if 100% consented).</div>
+                <div class="cmd-tile-name">Start Capture</div>
+                <div class="cmd-tile-desc">Start saving recording.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile" id="cmd-btn-stoprec" title="stoprec: Finalize and close the local recording file">
-              <div class="cmd-tile-badge">stoprec</div>
+            <button class="cmd-action-tile" id="cmd-btn-stoprec" title="Finalize local recording">
+              <div class="cmd-tile-badge">stop</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">stoprec</div>
-                <div class="cmd-tile-desc">Finalize and close the local recording file.</div>
+                <div class="cmd-tile-name">Stop Capture</div>
+                <div class="cmd-tile-desc">Finalize recording.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile tile-danger" id="cmd-btn-revoke" title="revoke: Force-terminate an ongoing recording at any moment">
+            <button class="cmd-action-tile tile-danger" id="cmd-btn-revoke" title="Halt ongoing recording">
               <div class="cmd-tile-badge">revoke</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">revoke</div>
-                <div class="cmd-tile-desc">Force-terminate an ongoing recording at any moment.</div>
+                <div class="cmd-tile-name">Revoke Consent</div>
+                <div class="cmd-tile-desc">Halt ongoing recording.</div>
               </div>
             </button>
           </div>
@@ -300,51 +506,43 @@
 
         <!-- Category: Media Sharing & Slides -->
         <div class="cmd-category-block">
-          <div class="category-tag">MEDIA TRACKS & PRESENTATION</div>
+          <div class="category-tag">SHARING & PRESENTATION</div>
           <div class="cmd-tiles-row">
-            <button class="cmd-action-tile" id="cmd-btn-screen" title="screen: Toggle OS display/window screen sharing">
+            <button class="cmd-action-tile" id="cmd-btn-screen" title="Toggle screen sharing">
               <div class="cmd-tile-badge">screen</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">screen</div>
-                <div class="cmd-tile-desc">Toggle OS display/window screen sharing.</div>
+                <div class="cmd-tile-name">Share Screen</div>
+                <div class="cmd-tile-desc">Toggle screen sharing.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile" id="cmd-btn-present-next" title="present / next: Start synchronized slide deck presentation and advance slides">
-              <div class="cmd-tile-badge">present / next</div>
+            <button class="cmd-action-tile" id="cmd-btn-facecam" title="Toggle camera overlay on screen share">
+              <div class="cmd-tile-badge">camera</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">present / next</div>
-                <div class="cmd-tile-desc">Start synchronized slide deck presentation and advance slides.</div>
+                <div class="cmd-tile-name">Face Camera</div>
+                <div class="cmd-tile-desc">Camera overlay on screen.</div>
               </div>
             </button>
           </div>
         </div>
 
-        <!-- Category: Engine & System -->
+        <!-- Category: Meeting Options -->
         <div class="cmd-category-block">
-          <div class="category-tag">SYSTEM & EXECUTABLE CONTROL</div>
+          <div class="category-tag">MEETING OPTIONS</div>
           <div class="cmd-tiles-row">
-            <button class="cmd-action-tile" id="cmd-btn-stats" title="stats: Print packet throughput and verify zero disk writes on the server">
-              <div class="cmd-tile-badge">stats</div>
+            <button class="cmd-action-tile" id="cmd-btn-stats" title="Show connection health">
+              <div class="cmd-tile-badge">health</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">stats</div>
-                <div class="cmd-tile-desc">Print packet throughput and verify zero disk writes on the server.</div>
+                <div class="cmd-tile-name">Connection Health</div>
+                <div class="cmd-tile-desc">Check streaming quality.</div>
               </div>
             </button>
 
-            <button class="cmd-action-tile" id="cmd-btn-open" title="open: Re-open the browser tab (http://localhost:7878)">
-              <div class="cmd-tile-badge">open</div>
+            <button class="cmd-action-tile tile-quit" id="cmd-btn-quit" title="Exit meeting">
+              <div class="cmd-tile-badge">exit</div>
               <div class="cmd-tile-body">
-                <div class="cmd-tile-name">open</div>
-                <div class="cmd-tile-desc">Re-open the browser tab (http://localhost:7878).</div>
-              </div>
-            </button>
-
-            <button class="cmd-action-tile tile-quit" id="cmd-btn-quit" title="quit: Gracefully shut down all threads and exit">
-              <div class="cmd-tile-badge">quit</div>
-              <div class="cmd-tile-body">
-                <div class="cmd-tile-name">quit</div>
-                <div class="cmd-tile-desc">Gracefully shut down all threads and exit.</div>
+                <div class="cmd-tile-name">Exit Meeting</div>
+                <div class="cmd-tile-desc">Leave call and close.</div>
               </div>
             </button>
           </div>
@@ -354,121 +552,118 @@
     </div>
   </div>
 
-  <!-- ========================================================================= -->
-  <!-- ✉️ SECURE SMTP INVITATION MODAL                                          -->
-  <!-- ========================================================================= -->
-  <div class="modal-overlay" id="smtp-modal" role="dialog" aria-modal="true" aria-labelledby="smtp-title" style="display:none;">
+  <!-- Email Invitation Modal -->
+  <div class="modal-overlay" id="smtp-modal" role="dialog" aria-modal="true" aria-labelledby="smtp-title"
+    style="display:none;">
     <div class="smtp-modal-box">
       <div class="cmd-center-header">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <div class="cmd-glow-icon" style="background:rgba(16,185,129,0.2); color:#34d399;">✉️</div>
-          <div>
-            <h2 class="cmd-title" id="smtp-title">Secure SMTP Attendee Invitation</h2>
-            <p class="cmd-subtitle">Embedded in-memory SMTP client. Zero disk footprints.</p>
-          </div>
+        <div>
+          <h2 class="cmd-title" id="smtp-title">Invite Guests</h2>
+          <p class="cmd-subtitle">Send a private conference invitation</p>
         </div>
-        <button class="modal-close-btn" id="btn-close-smtp-modal" aria-label="Close SMTP Dialog">✕</button>
+        <button class="modal-close-btn" id="btn-close-smtp-modal" aria-label="Close Invite Dialog">Close</button>
       </div>
 
-      <div class="smtp-form-grid">
-        <!-- SMTP Server Configuration (Collapsible or editable) -->
-        <fieldset class="smtp-fieldset">
-          <legend>SMTP Secure Channel Configuration</legend>
-          
-          <div class="form-row">
-            <label for="smtp-preset-select">Provider Preset:</label>
-            <select id="smtp-preset-select" class="form-input">
-              <option value="gmail" selected>Google Gmail (smtp.gmail.com:587)</option>
-              <option value="outlook">Microsoft Outlook (smtp-mail.outlook.com:587)</option>
-              <option value="custom">Custom SMTP Server / Private Corporate Relay</option>
-            </select>
-          </div>
+      <div class="smtp-invite-card">
+        <!-- Host Auth Notification Banner -->
+        <div id="smtp-auth-banner"
+          style="display:none; padding:12px; background:var(--bg-blue-tint); border:1px solid var(--border-blue); border-radius:8px; margin-bottom:14px; font-size:12px;">
+          <div style="font-weight:600; color:var(--text-main); margin-bottom:4px;">Host Verification Required</div>
+          <div style="color:var(--text-muted); margin-bottom:8px;">Invitations dispatch through mail.safespaceshub.com.
+            You must be signed in with a verified email address to send invitations.</div>
+          <button type="button" class="btn-subtle" id="btn-smtp-goto-auth"
+            style="font-size:11px; padding:4px 10px;">Sign In or Register</button>
+        </div>
 
-          <div class="form-grid-2">
+        <div class="form-row">
+          <label for="invite-to">Guest Email Address:</label>
+          <input type="email" id="invite-to" class="form-input" placeholder="colleague@domain.com" required>
+        </div>
+
+        <div class="form-row">
+          <label for="invite-name">Guest Name (Optional):</label>
+          <input type="text" id="invite-name" class="form-input" placeholder="Name">
+        </div>
+
+        <div class="form-row">
+          <label for="invite-note">Personal Note:</label>
+          <input type="text" id="invite-note" class="form-input" value="Please join our conference.">
+        </div>
+
+        <button id="btn-send-smtp-invite" class="btn-primary-send" style="width:100%; margin-top:6px;">
+          <span>Send Invitation</span>
+        </button>
+
+        <div class="smtp-log-container" style="margin-top:14px;">
+          <div class="smtp-status-banner" id="smtp-log-box">Ready to send invitations.</div>
+        </div>
+
+        <!-- Optional Collapsible Settings (Non-technical default view) -->
+        <details class="smtp-advanced-accordion" style="margin-top:16px;">
+          <summary class="smtp-advanced-summary">Mail Settings</summary>
+          <div class="smtp-settings-inner"
+            style="margin-top:12px; padding:12px; background:var(--bg-subtle); border-radius:8px; border:1px solid var(--border-glass);">
+
             <div class="form-row">
-              <label for="smtp-host">Host / IP:</label>
-              <input type="text" id="smtp-host" class="form-input" value="smtp.gmail.com" placeholder="e.g. smtp.gmail.com">
+              <label for="smtp-preset-select">Provider:</label>
+              <select id="smtp-preset-select" class="form-input">
+                <option value="stalwart" selected>Safe Spaces Dedicated Gateway (mail.safespaceshub.com:587)</option>
+                <option value="custom">Custom SMTP Server</option>
+              </select>
             </div>
-            <div class="form-row">
-              <label for="smtp-port">Port:</label>
-              <input type="number" id="smtp-port" class="form-input" value="587">
+
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label for="smtp-host">Server:</label>
+                <input type="text" id="smtp-host" class="form-input" value="mail.safespaceshub.com">
+              </div>
+              <div class="form-row">
+                <label for="smtp-port">Port:</label>
+                <input type="number" id="smtp-port" class="form-input" value="587">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label for="smtp-user">Account Email:</label>
+                <input type="text" id="smtp-user" class="form-input" placeholder="grafana@safespaceshub.com">
+              </div>
+              <div class="form-row">
+                <label for="smtp-pass">Password / Token:</label>
+                <input type="password" id="smtp-pass" class="form-input" placeholder="Password">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-row">
+                <label for="smtp-sender">Sender Email:</label>
+                <input type="email" id="smtp-sender" class="form-input" value="grafana@safespaceshub.com">
+              </div>
+              <div class="form-row">
+                <label for="smtp-name">Sender Name:</label>
+                <input type="text" id="smtp-name" class="form-input" value="Safe Spaces Grafana">
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+              <button id="btn-save-smtp-cfg" class="btn-subtle">Save Settings</button>
             </div>
           </div>
-
-          <div class="form-grid-2">
-            <div class="form-row">
-              <label for="smtp-user">Username / Email:</label>
-              <input type="text" id="smtp-user" class="form-input" placeholder="user@gmail.com (if auth required)">
-            </div>
-            <div class="form-row">
-              <label for="smtp-pass">App Password / Token:</label>
-              <input type="password" id="smtp-pass" class="form-input" placeholder="App password or secret">
-            </div>
-          </div>
-
-          <div class="form-grid-2">
-            <div class="form-row">
-              <label for="smtp-sender">From Email:</label>
-              <input type="email" id="smtp-sender" class="form-input" value="host@gafana.local">
-            </div>
-            <div class="form-row">
-              <label for="smtp-name">From Name:</label>
-              <input type="text" id="smtp-name" class="form-input" value="Gafana Meeting Host">
-            </div>
-          </div>
-
-          <div style="display:flex; justify-content:flex-end;">
-            <button id="btn-save-smtp-cfg" class="btn-subtle">Save In-Memory Settings</button>
-          </div>
-        </fieldset>
-
-        <!-- Attendee Invitation Dispatch -->
-        <fieldset class="smtp-fieldset highlight-box">
-          <legend>Dispatch Meeting Invitation</legend>
-
-          <div class="form-row">
-            <label for="invite-to">Attendee Email Address(es):</label>
-            <input type="email" id="invite-to" class="form-input" placeholder="colleague@domain.com" required>
-          </div>
-
-          <div class="form-row">
-            <label for="invite-name">Attendee Name:</label>
-            <input type="text" id="invite-name" class="form-input" placeholder="e.g. Sarah Connor">
-          </div>
-
-          <div class="form-row">
-            <label for="invite-note">Confidential Note (Optional):</label>
-            <input type="text" id="invite-note" class="form-input" value="Please join our confidential Gafana conference (100% consent required to record).">
-          </div>
-
-          <button id="btn-send-smtp-invite" class="btn-primary-send">
-            <span>🚀 Send Secure Invitation via SMTP</span>
-          </button>
-        </fieldset>
-      </div>
-
-      <!-- Live Handshake Output Log -->
-      <div class="smtp-log-container">
-        <div class="smtp-log-title">SMTP Transaction Transcript Log:</div>
-        <pre class="smtp-log-box" id="smtp-log-box">Ready. Configure SMTP or select Local Simulation to send an invite.</pre>
+        </details>
       </div>
     </div>
   </div>
 
-  <!-- ========================================================================= -->
-  <!-- 👥 PEERS LIST MODAL                                                      -->
-  <!-- ========================================================================= -->
-  <div class="modal-overlay" id="peers-modal" role="dialog" aria-modal="true" aria-labelledby="peers-title" style="display:none;">
+  <!-- Peers List Modal -->
+  <div class="modal-overlay" id="peers-modal" role="dialog" aria-modal="true" aria-labelledby="peers-title"
+    style="display:none;">
     <div class="small-modal-box">
       <div class="cmd-center-header">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div class="cmd-glow-icon">👥</div>
-          <div>
-            <h3 class="cmd-title" id="peers-title">Connected Room Participants</h3>
-            <p class="cmd-subtitle">Room: <span style="color:#00f2fe;">Gafana-Secure-Room</span></p>
-          </div>
+        <div>
+          <h3 class="cmd-title" id="peers-title">Participants</h3>
+          <p class="cmd-subtitle">Room: <span style="color:var(--accent-blue);">Grafana-Secure-Room</span></p>
         </div>
-        <button class="modal-close-btn" id="btn-close-peers-modal">✕</button>
+        <button class="modal-close-btn" id="btn-close-peers-modal">Close</button>
       </div>
 
       <div class="peers-list" id="peers-modal-list">
@@ -476,38 +671,492 @@
       </div>
 
       <div style="margin-top:16px; display:flex; gap:10px; justify-content:flex-end;">
-        <button id="btn-copy-invite-link" class="btn-subtle">📋 Copy Room Link</button>
-        <button id="btn-refresh-peers" class="btn-subtle">🔄 Refresh</button>
+        <button id="btn-copy-invite-link" class="btn-subtle">Copy Link</button>
+        <button id="btn-refresh-peers" class="btn-subtle">Refresh</button>
       </div>
     </div>
   </div>
 
-  <!-- ========================================================================= -->
-  <!-- ⚠️ Consensus Voting Modal Dialog                                         -->
-  <!-- ========================================================================= -->
-  <div class="modal-overlay" id="consensus-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" style="display:none;">
+  <!-- Consensus Voting Modal Dialog -->
+  <div class="modal-overlay" id="consensus-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
+    style="display:none;">
     <div class="consensus-modal">
-      <div class="modal-icon">⚠️</div>
       <h2 class="modal-title" id="modal-title">Recording Consent Requested</h2>
       <p class="modal-desc" id="modal-desc">
-        A participant (<strong id="rec-requester-name">Host</strong>) has requested to record this meeting directly to their local computer.
+        A participant (<strong id="rec-requester-name">Host</strong>) has requested to record this meeting locally.
         <br><br>
-        <strong>Gafana Consensus Rule:</strong> Recording will <strong>NEVER begin</strong> unless <strong>100% of participants affirmatively vote YES</strong>. No recording is ever stored in the cloud. If you decline, recording is strictly blocked.
+        <strong>Consensus Rule:</strong> Recording requires 100% agreement. No data is sent to the cloud. If you
+        decline, recording is blocked.
       </p>
 
       <div class="vote-tally-box">
-        <div>Active Participants: <strong id="tally-total">1</strong></div>
-        <div>Consented (YES): <strong style="color: #10b981;" id="tally-yes">1</strong></div>
-        <div>Veto (NO): <strong style="color: #f43f5e;" id="tally-no">0</strong></div>
+        <div>Participants: <strong id="tally-total">1</strong></div>
+        <div>Agreed: <strong style="color: #10b981;" id="tally-yes">1</strong></div>
+        <div>Veto: <strong style="color: #f43f5e;" id="tally-no">0</strong></div>
       </div>
 
       <div class="modal-actions">
-        <button class="btn-deny" id="btn-vote-deny">Decline & Veto</button>
-        <button class="btn-accept" id="btn-vote-accept">I Agree & Grant Consent</button>
+        <button class="btn-deny" id="btn-vote-deny">Deny</button>
+        <button class="btn-accept" id="btn-vote-accept">Agree</button>
       </div>
     </div>
   </div>
 
-  <script src="gafana_web.js"></script>
+  <!-- Official Safe Spaces AI Innovation Hub Web Footer -->
+  <footer id="app-footer" class="app-footer">
+    <div class="footer-container">
+      <div class="footer-grid">
+
+        <!-- Col 1: Safe Spaces Info (spans 2 columns) -->
+        <div class="footer-col-brand">
+          <div class="footer-brand-header">
+            <img src="/logo.png" alt="Safe Spaces AI Hub Logo" class="footer-logo">
+            <span class="footer-brand-title">Safe Spaces AI Hub</span>
+          </div>
+          <p class="footer-brand-desc">
+            Safe Spaces AI Innovation Hub - SMC Limited. Advancing ethical artificial intelligence, edge software architecture, and high-impact digital products across East Africa.
+          </p>
+          <div class="footer-chapter">
+            <span class="footer-mono-tag">Chapter: Mbarara, Uganda (HQ)</span>
+          </div>
+          <div class="footer-address-box">
+            <p class="footer-address-text">
+              Amazon Building, 4th Floor • Hive Colab<br>Mbarara High Street, Uganda
+            </p>
+            <a href="https://www.google.com/maps/place/Safe+Spaces+AI+Innovation+Hub/@-0.6082977,30.6579433,726m/data=!3m2!1e3!4b1!4m6!3m5!1s0x19d91b7bb03ce9e1:0xd3d62bafe2a618b0!8m2!3d-0.6083031!4d30.6605236!16s%2Fg%2F11nr8q6735?entry=ttu"
+              target="_blank" rel="noopener noreferrer" class="footer-map-link">
+              <svg class="footer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path
+                  d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0">
+                </path>
+                <circle cx="12" cy="10" r="3"></circle>
+              </svg>
+              <span>Google Maps Location</span>
+              <svg class="footer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M15 3h6v6"></path>
+                <path d="M10 14 21 3"></path>
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+              </svg>
+            </a>
+          </div>
+        </div>
+
+        <!-- Col 2: Products & Tools -->
+        <div class="footer-col">
+          <h4 class="footer-heading">Products &amp; Tools</h4>
+          <ul class="footer-links">
+            <li><a href="https://safespaceshub.com" target="_blank" rel="noopener noreferrer">Safe Spaces Platform</a></li>
+            <li><a href="https://grafana.safespaceshub.com">Grafana Conference</a></li>
+            <li><a href="https://filefran.safespaceshub.com" target="_blank" rel="noopener noreferrer">FileFran Vault</a></li>
+            <li><a href="https://thedokta.safespaceshub.com" target="_blank" rel="noopener noreferrer">TheDokta Health AI</a></li>
+            <li><a href="https://gbvreport.safespaceshub.com" target="_blank" rel="noopener noreferrer">GBVReport Platform</a></li>
+            <li><a href="/api/docs" target="_blank" rel="noopener noreferrer">API Reference &amp; MCP</a></li>
+          </ul>
+        </div>
+
+        <!-- Col 3: Services & Focus -->
+        <div class="footer-col">
+          <h4 class="footer-heading">Services &amp; Focus</h4>
+          <ul class="footer-links">
+            <li><a href="https://safespaceshub.com/services" target="_blank" rel="noopener noreferrer">Services &amp; Focus</a></li>
+            <li><a href="https://safespaceshub.com/projects" target="_blank" rel="noopener noreferrer">Projects &amp; Research</a></li>
+            <li><a href="https://safespaceshub.com/about" target="_blank" rel="noopener noreferrer">Governance &amp; Manifesto</a></li>
+            <li><a href="https://safespaceshub.com/objectives" target="_blank" rel="noopener noreferrer">Impact &amp; Objectives</a></li>
+            <li><a href="https://safespaceshub.com/blog" target="_blank" rel="noopener noreferrer">Community &amp; News</a></li>
+          </ul>
+        </div>
+
+        <!-- Col 4: Connect & Inquiries -->
+        <div class="footer-col">
+          <h4 class="footer-heading">Connect &amp; Inquiries</h4>
+          <div class="footer-contact-info">
+            <a href="mailto:info@safespaceshub.com" class="footer-contact-link">info@safespaceshub.com</a>
+            <a href="tel:+256791219799" class="footer-contact-link">+256 791 219 799</a>
+            <a href="https://safespaceshub.com/reviews" target="_blank" rel="noopener noreferrer"
+              class="footer-review-link">Client Reviews &amp; Testimonials &rarr;</a>
+          </div>
+          <div class="footer-channels">
+            <p class="footer-mono-tag">Channels</p>
+            <div class="footer-social-links">
+              <a href="https://linkedin.com/company/safe-spacesug/" target="_blank"
+                rel="noopener noreferrer">LinkedIn</a>
+              <a href="https://x.com/SafeSpacesAIHub" target="_blank" rel="noopener noreferrer">X / Twitter</a>
+              <a href="https://github.com/Safe-Spaces-AI" target="_blank" rel="noopener noreferrer">GitHub</a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Copyright & Policies -->
+      <div class="footer-bottom">
+        <p class="footer-copyright">&copy; 2026 Safe Spaces AI Innovation Hub - SMC Limited. All rights reserved.</p>
+        <div class="footer-legal-links">
+          <a href="#privacy-modal" id="footer-link-privacy">Privacy Policy</a>
+          <span class="footer-bullet">&bull;</span>
+          <a href="https://safespaceshub.com/terms" target="_blank" rel="noopener noreferrer">Terms of Governance</a>
+          <span class="footer-bullet">&bull;</span>
+          <a href="https://safespaceshub.com/cookies" target="_blank" rel="noopener noreferrer">Security Notice</a>
+          <span class="footer-bullet">&bull;</span>
+          <a href="#cookie-modal" id="footer-link-cookie">Cookie Policy</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Host Authentication Modal -->
+  <div class="modal-overlay" id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title"
+    style="display:none;">
+    <div class="auth-modal-box">
+      <div class="cmd-center-header">
+        <div>
+          <h2 class="cmd-title" id="auth-modal-title">Host Account</h2>
+          <p class="cmd-subtitle">Authenticate to unlock meeting hosting &amp; direct invitations</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-auth-modal" aria-label="Close Account Dialog">Close</button>
+      </div>
+
+      <!-- Auth Navigation Tabs -->
+      <div class="auth-tabs" id="auth-tabs-row">
+        <button class="auth-tab-btn active" id="tab-auth-login">Sign In</button>
+        <button class="auth-tab-btn" id="tab-auth-register">Sign Up</button>
+        <button class="auth-tab-btn" id="tab-auth-verify">Confirm Email</button>
+      </div>
+
+      <!-- View 1: Sign In -->
+      <div id="auth-view-login">
+        <div class="form-row">
+          <label for="login-identifier">Username or Email:</label>
+          <input type="text" id="login-identifier" class="form-input" placeholder="host@safespaceshub.com"
+            autocomplete="username">
+        </div>
+        <div class="form-row">
+          <label for="login-password">Password:</label>
+          <input type="password" id="login-password" class="form-input" placeholder="Password"
+            autocomplete="current-password">
+        </div>
+        <button id="btn-submit-login" class="btn-primary-send" style="width:100%; margin-top:10px;">
+          <span>Sign In</span>
+        </button>
+        <div class="smtp-log-container" style="margin-top:12px;">
+          <div class="smtp-status-banner" id="auth-login-status">Enter your credentials to manage meetings.</div>
+        </div>
+      </div>
+
+      <!-- View 2: Sign Up -->
+      <div id="auth-view-register" style="display:none;">
+        <div class="form-row">
+          <label for="reg-username">Username:</label>
+          <input type="text" id="reg-username" class="form-input" placeholder="username" autocomplete="username">
+        </div>
+        <div class="form-row">
+          <label for="reg-email">Email Address:</label>
+          <input type="email" id="reg-email" class="form-input" placeholder="user@domain.com" autocomplete="email">
+        </div>
+        <div class="form-row">
+          <label for="reg-password">Password:</label>
+          <input type="password" id="reg-password" class="form-input" placeholder="Password (min 6 chars)"
+            autocomplete="new-password">
+        </div>
+        <div style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4;">
+          Notice: A 6-digit confirmation code will be sent to your email from our self-hosted mail server
+          (mail.safespaceshub.com). Your meeting logs and personal data remain on this device.
+        </div>
+        <button id="btn-submit-register" class="btn-primary-send" style="width:100%; margin-top:12px;">
+          <span>Create Account</span>
+        </button>
+        <div class="smtp-log-container" style="margin-top:12px;">
+          <div class="smtp-status-banner" id="auth-register-status">Fill out the details above to register.</div>
+        </div>
+      </div>
+
+      <!-- View 3: Confirm Email -->
+      <div id="auth-view-verify" style="display:none;">
+        <div class="form-row">
+          <label for="verify-email">Email Address:</label>
+          <input type="email" id="verify-email" class="form-input" placeholder="user@domain.com">
+        </div>
+        <div class="form-row">
+          <label for="verify-code">6-Digit Confirmation Code:</label>
+          <input type="text" id="verify-code" class="form-input" placeholder="123456" maxlength="6"
+            style="letter-spacing:4px; font-family:'JetBrains Mono',monospace; font-size:16px;">
+        </div>
+        <button id="btn-submit-verify" class="btn-primary-send" style="width:100%; margin-top:10px;">
+          <span>Confirm Code</span>
+        </button>
+        <div class="smtp-log-container" style="margin-top:12px;">
+          <div class="smtp-status-banner" id="auth-verify-status">Check your inbox for the 6-digit verification code.
+          </div>
+        </div>
+      </div>
+
+      <!-- View 4: Account Active Details (Logged In) -->
+      <div id="auth-view-account" style="display:none;">
+        <div class="sync-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+              <strong id="acc-username-display" style="font-size:15px; color:var(--text-main);">User</strong>
+              <div id="acc-email-display" style="font-size:12px; color:var(--text-muted);">email@safespaceshub.com</div>
+            </div>
+            <div id="acc-badge-container">
+              <span class="badge-verified" id="acc-badge-verified">Verified Host</span>
+            </div>
+          </div>
+          <div
+            style="font-size:12px; color:var(--text-muted); border-top:1px solid var(--border-glass); padding-top:10px; margin-top:6px;">
+            Storage: <strong id="acc-storage-mode" style="color:var(--text-main);">Local Device Only</strong>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap;">
+          <button id="btn-acc-open-sync" class="btn-subtle" style="flex:1;">Local Data &amp; Backup</button>
+          <button id="btn-acc-open-admin" class="btn-subtle" style="flex:1; display:none;">Admin Dashboard</button>
+          <button id="btn-acc-logout" class="btn-subtle" style="color:var(--accent-rose);">Sign Out</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Local Data & Voluntary Cloud Sync Modal -->
+  <div class="modal-overlay" id="sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-modal-title"
+    style="display:none;">
+    <div class="sync-modal-box">
+      <div class="cmd-center-header">
+        <div>
+          <h2 class="cmd-title" id="sync-modal-title">Device Storage &amp; Backup</h2>
+          <p class="cmd-subtitle">Local-first data retention and voluntary cloud sync</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-sync-modal" aria-label="Close Sync Dialog">Close</button>
+      </div>
+
+      <div class="sync-card">
+        <h4 style="font-size:13px; color:var(--text-main); margin-bottom:6px;">Local-First Device Architecture</h4>
+        <p style="font-size:12px; color:var(--text-muted); line-height:1.5;">
+          All user profile data, meeting logs, consensus vote records, and session transcripts are stored strictly in
+          your browser's local sandbox on this device. We do not inspect, centralize, or monetize your data.
+        </p>
+
+        <div class="sync-toggle-row">
+          <div>
+            <div class="sync-toggle-label">Backup to filefran.safespaceshub.com</div>
+            <div class="sync-toggle-sub">Voluntary cloud backup for cross-device retrieval</div>
+          </div>
+          <label style="cursor:pointer; display:flex; align-items:center;">
+            <input type="checkbox" id="sync-allow-checkbox"
+              style="width:18px; height:18px; accent-color:var(--accent-cyan); cursor:pointer;">
+          </label>
+        </div>
+
+        <div style="font-size:12px; color:var(--text-muted); margin-top:10px;">
+          <div>Target Vault: <strong style="color:var(--accent-cyan);">https://filefran.safespaceshub.com</strong></div>
+          <div>Last Synced: <span id="sync-last-time-display">Never (Local Only)</span></div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+        <div style="display:flex; gap:10px;">
+          <button id="btn-trigger-cloud-sync" class="btn-subtle" style="flex:1;">Sync Now</button>
+          <button id="btn-export-local-json" class="btn-subtle" style="flex:1;">Export Local JSON</button>
+        </div>
+        <button id="btn-purge-local-data" class="btn-subtle"
+          style="color:var(--accent-rose); border-color:rgba(244,63,94,0.3);">
+          Clear Local Device Data
+        </button>
+      </div>
+
+      <div class="smtp-log-container" style="margin-top:12px;">
+        <div class="smtp-status-banner" id="sync-status-box">Ready. Local storage active.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Monitoring Dashboard Modal -->
+  <div class="modal-overlay" id="admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-modal-title"
+    style="display:none;">
+    <div class="admin-modal-box">
+      <div class="cmd-center-header">
+        <div>
+          <h2 class="cmd-title" id="admin-modal-title">Admin Dashboard</h2>
+          <p class="cmd-subtitle">Monitoring for voluntary shared data, accounts &amp; active rooms</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-admin-modal" aria-label="Close Admin Dialog">Close</button>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="admin-stats-grid">
+        <div class="admin-stat-card">
+          <div class="admin-stat-label">Total Accounts</div>
+          <div class="admin-stat-val" id="adm-val-users">0</div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-label">Verified Hosts</div>
+          <div class="admin-stat-val" id="adm-val-verified">0</div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-label">Cloud Sync Opt-in</div>
+          <div class="admin-stat-val" id="adm-val-sync">0</div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-label">Backups in Vault</div>
+          <div class="admin-stat-val" id="adm-val-backups">0</div>
+        </div>
+      </div>
+
+      <div style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+        Vault Endpoint: <strong style="color:var(--accent-cyan);">https://filefran.safespaceshub.com</strong> &bull;
+        Mail Gateway: <strong>mail.safespaceshub.com:587</strong>
+      </div>
+
+      <!-- Active Rooms Section -->
+      <div style="margin-top:16px;">
+        <h3
+          style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-bottom:8px;">
+          Active Rooms</h3>
+        <div class="admin-table-wrapper">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Room Name</th>
+                <th>Participants</th>
+                <th>Recording Status</th>
+                <th>Auto-Admit</th>
+              </tr>
+            </thead>
+            <tbody id="adm-rooms-table-body">
+              <tr>
+                <td colspan="4" style="text-align:center; color:var(--text-muted);">No active rooms reported.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- User Accounts & Voluntary Shared Backups Section -->
+      <div style="margin-top:20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted);">User
+            Accounts &amp; Voluntary Backups</h3>
+          <button id="btn-admin-refresh" class="btn-subtle" style="font-size:11px; padding:3px 10px;">Refresh</button>
+        </div>
+        <div class="admin-table-wrapper">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th>Cloud Sync</th>
+                <th>Last Synced</th>
+                <th>Backup Data</th>
+              </tr>
+            </thead>
+            <tbody id="adm-users-table-body">
+              <tr>
+                <td colspan="6" style="text-align:center; color:var(--text-muted);">Loading registry overview...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Privacy Policy Modal -->
+  <div class="modal-overlay" id="privacy-modal" role="dialog" aria-modal="true" aria-labelledby="privacy-modal-title"
+    style="display:none;">
+    <div class="legal-modal-box">
+      <div class="cmd-center-header">
+        <div>
+          <h2 class="cmd-title" id="privacy-modal-title">Privacy Charter &amp; Laws</h2>
+          <p class="cmd-subtitle">Safe Spaces AI Innovation Hub - Data Sovereignty</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-privacy-modal" aria-label="Close Privacy Dialog">Close</button>
+      </div>
+
+      <div class="legal-content-box">
+        <h4>1. Local-First Default Retention</h4>
+        <p>
+          Safe Spaces Grafana is engineered from the ground up to keep your personal data, meeting logs, chat
+          transcripts, and configurations exclusively on your local device. We run zero centralized databases and zero
+          behavioral tracking.
+        </p>
+
+        <h4>2. Voluntary Cloud Sync (filefran.safespaceshub.com)</h4>
+        <p>
+          Data is only uploaded to our cloud infrastructure if you explicitly toggle voluntary cloud backup in your
+          settings. When enabled, encrypted archives are stored in our dedicated vault at
+          <strong>https://filefran.safespaceshub.com</strong>. You retain complete ownership and can purge remote copies
+          at any time.
+        </p>
+
+        <h4>3. Multi-Party Consensus Recording</h4>
+        <p>
+          No meeting can ever be recorded without the unanimous, verifiable consent of all connected participants. Any
+          participant has the sovereign right to veto or revoke recording mid-call, halting capture instantly.
+        </p>
+
+        <h4>4. African and International Privacy Compliance</h4>
+        <p>
+          Our operations strictly adhere to the <strong>Uganda Data Protection and Privacy Act 2019</strong>,
+          <strong>Kenya Data Protection Act 2019</strong>, the <strong>African Union Convention on Cyber Security and
+            Personal Data Protection (Malabo Convention)</strong>, and the <strong>EU General Data Protection Regulation
+            (GDPR)</strong>.
+        </p>
+
+        <h4>5. Rights of the Data Subject</h4>
+        <ul>
+          <li><strong>Right to Portability:</strong> Export all locally held data as JSON via the Device Storage menu.
+          </li>
+          <li><strong>Right to Erasure:</strong> One-click local storage purge eliminates all credentials and logs
+            instantly.</li>
+          <li><strong>Right to Rectification:</strong> Edit your display name, email, and preferences at any time.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cookie Policy Modal -->
+  <div class="modal-overlay" id="cookie-modal" role="dialog" aria-modal="true" aria-labelledby="cookie-modal-title"
+    style="display:none;">
+    <div class="legal-modal-box">
+      <div class="cmd-center-header">
+        <div>
+          <h2 class="cmd-title" id="cookie-modal-title">Cookie &amp; Storage Policy</h2>
+          <p class="cmd-subtitle">Functional local tokens only &bull; Zero tracking</p>
+        </div>
+        <button class="modal-close-btn" id="btn-close-cookie-modal" aria-label="Close Cookie Dialog">Close</button>
+      </div>
+
+      <div class="legal-content-box">
+        <h4>Strictly Functional Storage</h4>
+        <p>
+          Safe Spaces Grafana does not use advertising, marketing, or behavioral tracking cookies.
+        </p>
+        <p>
+          We use isolated browser local storage strictly for functional application operations:
+        </p>
+        <ul>
+          <li><strong>grafana_token:</strong> Cryptographic session token for authenticated hosts to dispatch email
+            invitations via mail.safespaceshub.com.</li>
+          <li><strong>grafana_profile:</strong> Locally saved display name and avatar choices.</li>
+          <li><strong>grafana_settings:</strong> Audio, video, and auto-admit preferences.</li>
+          <li><strong>grafana_sync_pref:</strong> Your voluntary consent flag for backups to filefran.safespaceshub.com.
+          </li>
+        </ul>
+        <h4>Zero Third-Party Disclosures</h4>
+        <p>
+          No local storage tokens or cookies are ever transferred to advertising networks, search engines, or analytics
+          services.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script src="grafana_web.js"></script>
 </body>
+
 </html>

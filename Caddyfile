@@ -1,0 +1,35 @@
+# Caddyfile for Safe Spaces AI Innovation Hub - Grafana Conference Platform
+# Domain: grafana.safespaceshub.com
+
+grafana.safespaceshub.com {
+    # Automatic HTTPS with Let's Encrypt / ZeroSSL
+    encode zstd gzip
+
+    # Production Privacy & Security Headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Cross-Origin-Opener-Policy "same-origin"
+        Cross-Origin-Resource-Policy "same-origin"
+        Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=(), usb=()"
+        -Server
+    }
+
+    # Proxy to Grafana High-Performance Pure-Rust Engine
+    reverse_proxy 127.0.0.1:7878 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # Enable streaming and WebRTC/WebSocket support
+        flush_interval -1
+    }
+
+    # Custom Error Handling
+    handle_errors {
+        respond "{err.status_code} - Safe Spaces AI Innovation Hub Gateway Error" {err.status_code}
+    }
+}

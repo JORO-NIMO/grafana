@@ -72,7 +72,7 @@ impl StatelessSfuRelay {
         while running.load(Ordering::Relaxed) {
             match socket.recv_from(&mut buf) {
                 Ok((n, src)) => {
-                    if n < GAFANA_HEADER_SIZE {
+                    if n < GRAFANA_HEADER_SIZE {
                         continue;
                     }
 
@@ -81,7 +81,7 @@ impl StatelessSfuRelay {
                         None => continue,
                     };
 
-                    if hdr.magic != GAFANA_MAGIC {
+                    if hdr.magic != GRAFANA_MAGIC {
                         continue;
                     }
 

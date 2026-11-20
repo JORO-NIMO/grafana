@@ -1,25 +1,31 @@
-# Multi-stage production build for Gafana (Rust Edition)
-FROM rust:alpine AS builder
+# Multi-Stage Production Build for Safe Spaces AI Innovation Hub Grafana
+FROM rust:1.80-alpine AS builder
+
+WORKDIR /usr/src/grafana
 RUN apk add --no-cache musl-dev
 
-WORKDIR /build
+# Copy project files
 COPY Cargo.toml ./
 COPY src/ ./src/
-COPY examples/ ./examples/
 COPY web/ ./web/
+COPY logo.png ./
 
-# Compile static release binaries
+# Compile release binary with full optimizations
 RUN cargo build --release
 
-# Final Minimal Container
-FROM alpine:3.19
+# Minimal scratch/alpine runtime container
+FROM alpine:3.20
+
 WORKDIR /app
-COPY --from=builder /build/target/release/gafana /app/gafana
-COPY --from=builder /build/target/release/gafana-relay /app/gafana-relay
+RUN apk add --no-cache curl ca-certificates tzdata
+
+# Copy binary and assets
+COPY --from=builder /usr/src/grafana/target/release/grafana /app/grafana
 COPY web/ /app/web/
+COPY logo.png /app/logo.png
+RUN mkdir -p /app/data
 
-# Expose UDP relay port and HTTP web port
-EXPOSE 8765/udp
-EXPOSE 7878/tcp
+ENV GRAFANA_PORT=7878
+EXPOSE 7878 50000-50100/udp
 
-ENTRYPOINT ["/app/gafana"]
+ENTRYPOINT ["/app/grafana"]

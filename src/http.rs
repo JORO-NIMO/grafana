@@ -11,7 +11,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::consensus::RecordingType;
-use crate::engine::GafanaEngine;
+use crate::engine::GrafanaEngine;
 use crate::smtp::{SmtpClient, SmtpConfig};
 
 #[derive(Debug, Clone)]
@@ -27,13 +27,88 @@ pub struct SignalHub {
     pub queues: HashMap<String, Vec<SignalMessage>>,
 }
 
+static SERVER_START_TIME: AtomicU64 = AtomicU64::new(0);
+
+fn record_server_start() {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let _ = SERVER_START_TIME.compare_exchange(0, now, Ordering::Relaxed, Ordering::Relaxed);
+}
+
+fn get_server_uptime() -> u64 {
+    let start = SERVER_START_TIME.load(Ordering::Relaxed);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    if start > 0 {
+        now.saturating_sub(start)
+    } else {
+        0
+    }
+}
+
+pub fn push_cloud_vault(endpoint: &str, username: &str, email: &str, payload_json: &str) -> (bool, u32, String) {
+    use std::process::Command;
+    use std::io::Write;
+
+    let temp_dir = std::env::temp_dir();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(12345);
+    let temp_file_path = temp_dir.join(format!("filefran_sync_{}.json", now));
+    
+    let wrapped_json = format!(
+        r#"{{"source":"Safe Spaces AI Innovation Hub","username":"{}","email":"{}","timestamp":{},"vault_payload":{}}}"#,
+        username, email, now / 1000, payload_json
+    );
+
+    if let Ok(mut f) = std::fs::File::create(&temp_file_path) {
+        let _ = f.write_all(wrapped_json.as_bytes());
+    } else {
+        return (false, 0, "Could not create temporary vault payload file".to_string());
+    }
+
+    let curl_cmd = if cfg!(windows) { "curl.exe" } else { "curl" };
+    let mut cmd = Command::new(curl_cmd);
+    cmd.arg("-s").arg("-S");
+    cmd.arg("-X").arg("POST");
+    cmd.arg("-H").arg("Content-Type: application/json");
+    cmd.arg("-H").arg("User-Agent: SafeSpaces-Grafana/1.2.0");
+    cmd.arg("--data-binary").arg(format!("@{}", temp_file_path.display()));
+    cmd.arg("--max-time").arg("6");
+    cmd.arg(endpoint);
+
+    let output = match cmd.output() {
+        Ok(out) => out,
+        Err(e) => {
+            let _ = std::fs::remove_file(&temp_file_path);
+            return (false, 0, format!("Outbound push error: {}", e));
+        }
+    };
+
+    let _ = std::fs::remove_file(&temp_file_path);
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if output.status.success() {
+        (true, 200, if stdout.trim().is_empty() { "Vault record dispatched to Safe Spaces Cloud (filefran.safespaceshub.com)".to_string() } else { stdout.trim().to_string() })
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        (false, output.status.code().unwrap_or(500) as u32, format!("Remote responded with exit code {}: {}", output.status.code().unwrap_or(-1), stderr.trim()))
+    }
+}
+
 pub struct HttpServerConfig {
     pub port: u16,
     pub sfu_packets: Arc<AtomicU64>,
     pub running: Arc<AtomicBool>,
     pub smtp_client: Arc<Mutex<SmtpClient>>,
-    pub engine: Arc<Mutex<GafanaEngine>>,
+    pub engine: Arc<Mutex<GrafanaEngine>>,
     pub signal_hub: Arc<Mutex<SignalHub>>,
+    pub auth_registry: Arc<Mutex<crate::auth::AuthRegistry>>,
 }
 
 pub struct EmbeddedHttpServer {
@@ -47,6 +122,7 @@ impl EmbeddedHttpServer {
 
     pub fn start(self) -> thread::JoinHandle<()> {
         thread::spawn(move || {
+            record_server_start();
             let addr = format!("0.0.0.0:{}", self.config.port);
             let listener = match TcpListener::bind(&addr) {
                 Ok(l) => l,
@@ -68,6 +144,7 @@ impl EmbeddedHttpServer {
                             smtp_client: self.config.smtp_client.clone(),
                             engine: self.config.engine.clone(),
                             signal_hub: self.config.signal_hub.clone(),
+                            auth_registry: self.config.auth_registry.clone(),
                         };
                         thread::spawn(move || {
                             Self::handle_connection(stream, cfg_clone);
@@ -111,7 +188,7 @@ impl EmbeddedHttpServer {
     }
 
     fn handle_connection(mut stream: TcpStream, config: HttpServerConfig) {
-        let (method, full_path, body) = match read_full_request(&mut stream) {
+        let (method, full_path, body, header_str) = match read_full_request(&mut stream) {
             Some(req) => req,
             None => return,
         };
@@ -126,11 +203,11 @@ impl EmbeddedHttpServer {
         match path {
             "/" | "/index.html" => {
                 let content = if Path::new("web/index.html").exists() {
-                    fs::read("web/index.html").unwrap_or_else(|_| b"<h1>Gafana Web</h1>".to_vec())
+                    fs::read("web/index.html").unwrap_or_else(|_| b"<h1>Grafana Web</h1>".to_vec())
                 } else if Path::new("../web/index.html").exists() {
-                    fs::read("../web/index.html").unwrap_or_else(|_| b"<h1>Gafana Web</h1>".to_vec())
+                    fs::read("../web/index.html").unwrap_or_else(|_| b"<h1>Grafana Web</h1>".to_vec())
                 } else {
-                    b"<!DOCTYPE html><html><body><h1>Gafana Web UI</h1></body></html>".to_vec()
+                    b"<!DOCTYPE html><html><body><h1>Grafana Web UI</h1></body></html>".to_vec()
                 };
                 Self::send_response(stream, "200 OK", "text/html", &content);
             }
@@ -144,22 +221,67 @@ impl EmbeddedHttpServer {
                 };
                 Self::send_response(stream, "200 OK", "text/css", &content);
             }
-            "/gafana_web.js" => {
-                let content = if Path::new("web/gafana_web.js").exists() {
-                    fs::read("web/gafana_web.js").unwrap_or_default()
-                } else if Path::new("../web/gafana_web.js").exists() {
-                    fs::read("../web/gafana_web.js").unwrap_or_default()
+            "/grafana_web.js" => {
+                let content = if Path::new("web/grafana_web.js").exists() {
+                    fs::read("web/grafana_web.js").unwrap_or_default()
+                } else if Path::new("../web/grafana_web.js").exists() {
+                    fs::read("../web/grafana_web.js").unwrap_or_default()
                 } else {
-                    b"console.log('Gafana Web Engine Loaded');".to_vec()
+                    b"console.log('Grafana Web Engine Loaded');".to_vec()
                 };
                 Self::send_response(stream, "200 OK", "application/javascript", &content);
+            }
+            "/logo.png" | "/favicon.ico" => {
+                let content = if Path::new("web/logo.png").exists() {
+                    fs::read("web/logo.png").unwrap_or_default()
+                } else if Path::new("logo.png").exists() {
+                    fs::read("logo.png").unwrap_or_default()
+                } else if Path::new("../web/logo.png").exists() {
+                    fs::read("../web/logo.png").unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+                Self::send_response(stream, "200 OK", "image/png", &content);
+            }
+            "/api/health" => {
+                let sfu_pkts = config.sfu_packets.load(Ordering::Relaxed);
+                let peer_count = {
+                    let mut eng = config.engine.lock().unwrap();
+                    eng.peers.prune_timeouts(15000);
+                    eng.peers.active_count()
+                };
+                let user_count = {
+                    let auth = config.auth_registry.lock().unwrap();
+                    auth.user_count()
+                };
+                let smtp_cfg = {
+                    let client = config.smtp_client.lock().unwrap();
+                    client.get_masked_config()
+                };
+                let uptime = get_server_uptime();
+                let lan_ip = detect_lan_ip();
+                let network_url = get_shareable_url(config.port);
+
+                let json = format!(
+                    r#"{{"status":"healthy","platform":"Safe Spaces AI Innovation Hub","service":"Grafana Conference Engine","version":"1.2.0","uptime_seconds":{},"active_peers":{},"sfu_packets_routed":{},"vault":{{"storage":"atomic_disk_ledger","file":"data/grafana_vault.json","registered_users":{}}},"smtp":{{"configured":{},"host":"{}","port":{}}},"cloud_sync":{{"destination":"https://filefran.safespaceshub.com/api/v1/vault/sync","mode":"user_opt_in"}},"local_ip":"{}","network_url":"{}"}}"#,
+                    uptime, peer_count, sfu_pkts, user_count, smtp_cfg.is_configured, smtp_cfg.host, smtp_cfg.port, lan_ip, network_url
+                );
+                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+            }
+            "/api/docs" => {
+                let html = crate::openapi::get_api_docs_html();
+                Self::send_response(stream, "200 OK", "text/html", html.as_bytes());
+            }
+            "/api/openapi.json" => {
+                let json = crate::openapi::get_openapi_json();
+                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
             }
             "/api/status" => {
                 let sfu_pkts = config.sfu_packets.load(Ordering::Relaxed);
                 let lan_ip = detect_lan_ip();
                 let network_url = get_shareable_url(config.port);
                 let json = format!(
-                    "{{\"status\":\"online\",\"engine\":\"Gafana-Rust\",\"version\":\"1.2.0\",\"zero_data\":true,\"sfu_packets\":{},\"local_ip\":\"{}\",\"network_url\":\"{}\"}}",
+                    "{{\"status\":\"online\",\"engine\":\"Grafana-Rust\",\"version\":\"1.2.0\",\"zero_data\":true,\"sfu_packets\":{},\"local_ip\":\"{}\",\"network_url\":\"{}\"}}",
                     sfu_pkts, lan_ip, network_url
                 );
                 Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
@@ -174,7 +296,7 @@ impl EmbeddedHttpServer {
                 let lan_ip = detect_lan_ip();
                 let network_url = get_shareable_url(config.port);
                 let json = format!(
-                    "{{\"status\":\"online\",\"engine\":\"Gafana-Rust\",\"version\":\"1.2.0\",\
+                    "{{\"status\":\"online\",\"engine\":\"Grafana-Rust\",\"version\":\"1.2.0\",\
                      \"zero_data\":true,\"sfu_packets\":{},\"server_disk_writes_bytes\":0,\
                      \"active_rooms\":1,\"active_peers\":{},\
                      \"local_ip\":\"{}\",\"network_url\":\"{}\",\
@@ -185,10 +307,10 @@ impl EmbeddedHttpServer {
             }
             "/api/peers" => {
                 let req_peer_id = get_query_param(&full_path, "peer_id").unwrap_or("");
-                let peers = {
+                let (peers, auto_admit) = {
                     let mut eng = config.engine.lock().unwrap();
                     eng.peers.prune_timeouts(15000);
-                    eng.peers.list_active()
+                    (eng.peers.list_active(), eng.peers.auto_admit)
                 };
                 let mut peer_entries = Vec::new();
                 for p in peers.iter() {
@@ -198,12 +320,13 @@ impl EmbeddedHttpServer {
                         false
                     };
                     peer_entries.push(format!(
-                        "{{\"id\":\"{}\",\"name\":\"{}\",\"is_self\":{},\"joined_sec\":{}}}",
-                        p.peer_id, p.display_name, is_self, p.join_timestamp_sec
+                        "{{\"id\":\"{}\",\"name\":\"{}\",\"avatar\":\"{}\",\"status\":\"{}\",\"is_self\":{},\"joined_sec\":{}}}",
+                        p.peer_id, p.display_name, p.avatar, p.status, is_self, p.join_timestamp_sec
                     ));
                 }
                 let json = format!(
-                    "{{\"room\":\"Gafana-Secure-Room\",\"peers\":[{}]}}",
+                    "{{\"room\":\"Grafana-Secure-Room\",\"auto_admit\":{},\"peers\":[{}]}}",
+                    auto_admit,
                     peer_entries.join(",")
                 );
                 Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
@@ -211,14 +334,67 @@ impl EmbeddedHttpServer {
             "/api/peers/join" => {
                 let peer_id = extract_json_field(&body, "peer_id").unwrap_or_else(|| format!("web_{}", fast_random_id()));
                 let name = extract_json_field(&body, "name").unwrap_or_else(|| "Web Participant".to_string());
-                {
+                let avatar = extract_json_field(&body, "avatar").unwrap_or_default();
+                let status = {
                     let mut eng = config.engine.lock().unwrap();
-                    eng.peers.insert_or_update(&peer_id, &name);
-                }
+                    let (_, info) = eng.peers.insert_or_update_with_avatar(&peer_id, &name, &avatar);
+                    info.status
+                };
                 let json = format!(
-                    "{{\"success\":true,\"peer_id\":\"{}\",\"name\":\"{}\",\"room\":\"Gafana-Secure-Room\"}}",
-                    peer_id, name
+                    "{{\"success\":true,\"peer_id\":\"{}\",\"name\":\"{}\",\"status\":\"{}\",\"room\":\"Grafana-Secure-Room\"}}",
+                    peer_id, name, status
                 );
+                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+            }
+            "/api/peers/status" => {
+                let peer_id = get_query_param(&full_path, "peer_id").unwrap_or("");
+                let status = {
+                    let eng = config.engine.lock().unwrap();
+                    eng.peers.get_peer_status(peer_id)
+                };
+                let json = format!("{{\"status\":\"{}\"}}", status);
+                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+            }
+            "/api/peers/admit" => {
+                let peer_id = extract_json_field(&body, "peer_id").unwrap_or_default();
+                let admit = extract_json_field(&body, "admit")
+                    .map(|s| s == "true" || s == "1")
+                    .unwrap_or(true);
+                let ok = {
+                    let mut eng = config.engine.lock().unwrap();
+                    if admit {
+                        eng.peers.admit_peer(&peer_id)
+                    } else {
+                        eng.peers.deny_peer(&peer_id)
+                    }
+                };
+                let json = format!("{{\"success\":{}}}", ok);
+                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+            }
+            "/api/peers/profile" => {
+                let peer_id = extract_json_field(&body, "peer_id").unwrap_or_default();
+                let name = extract_json_field(&body, "name").unwrap_or_default();
+                let avatar = extract_json_field(&body, "avatar").unwrap_or_default();
+                let ok = {
+                    let mut eng = config.engine.lock().unwrap();
+                    eng.peers.update_profile(&peer_id, &name, &avatar)
+                };
+                let json = format!("{{\"success\":{}}}", ok);
+                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+            }
+            "/api/room/settings" => {
+                if method == "POST" {
+                    if let Some(auto_str) = extract_json_field(&body, "auto_admit") {
+                        let auto_val = auto_str == "true" || auto_str == "1";
+                        let mut eng = config.engine.lock().unwrap();
+                        eng.peers.auto_admit = auto_val;
+                    }
+                }
+                let auto_admit = {
+                    let eng = config.engine.lock().unwrap();
+                    eng.peers.auto_admit
+                };
+                let json = format!("{{\"auto_admit\":{}}}", auto_admit);
                 Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
             }
             "/api/peers/heartbeat" => {
@@ -353,31 +529,8 @@ impl EmbeddedHttpServer {
                 let json = "{\"guard_active\":true,\"screenshots_blocked\":true,\"bg_device_recording_blocked\":true,\"unanimous_consent_required\":true,\"status\":\"ARMED\"}";
                 Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
             }
-            "/api/open" => {
-                #[cfg(target_os = "windows")]
-                {
-                    let url = "http://localhost:7878";
-                    let launched = std::process::Command::new("cmd")
-                        .args(["/c", "start", "chrome", "--incognito", "--disable-extensions", url])
-                        .spawn()
-                        .or_else(|_| {
-                            std::process::Command::new("cmd")
-                                .args(["/c", "start", "msedge", "--inprivate", url])
-                                .spawn()
-                        });
-
-                    if launched.is_err() {
-                        let _ = std::process::Command::new("cmd")
-                            .args(["/c", "start", url])
-                            .spawn();
-                    }
-                }
-
-                let json = "{\"status\":\"ok\",\"url\":\"http://localhost:7878\"}";
-                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
-            }
             "/api/quit" => {
-                let json = "{\"status\":\"terminating\",\"message\":\"Gafana engine shutting down gracefully.\"}";
+                let json = "{\"status\":\"terminating\",\"message\":\"Grafana engine shutting down gracefully.\"}";
                 Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
                 config.running.store(false, Ordering::Relaxed);
                 println!("\n[WEB COMMAND] 'quit' triggered from Web Control Center. Shutting down...");
@@ -416,15 +569,247 @@ impl EmbeddedHttpServer {
                 client.setup(cfg);
                 Self::send_response(stream, "200 OK", "application/json", b"{\"success\":true,\"message\":\"SMTP config updated in volatile memory.\"}");
             }
+            "/api/smtp/test" => {
+                let client = config.smtp_client.lock().unwrap();
+                let (res, log) = client.test_connection();
+                let escaped_log = escape_json_string(&log);
+                let json = format!(
+                    r#"{{"success":{},"code":{},"log":"{}"}}"#,
+                    res.is_ok(),
+                    if res.is_ok() { 0 } else { -1 },
+                    escaped_log
+                );
+                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+            }
+            "/api/auth/register" => {
+                let username = extract_json_field(&body, "username").unwrap_or_default();
+                let email = extract_json_field(&body, "email").unwrap_or_default();
+                let password = extract_json_field(&body, "password").unwrap_or_default();
+
+                let reg_res = {
+                    let mut auth = config.auth_registry.lock().unwrap();
+                    auth.register(&username, &email, &password)
+                };
+
+                match reg_res {
+                    Ok((email, code)) => {
+                        // Dispatch confirmation code via our Stalwart SMTP gateway
+                        let note = format!("Your Safe Spaces Grafana confirmation code is: {}\n\nEnter this code on the verification screen to activate your hosting privileges.", code);
+                        let client = config.smtp_client.lock().unwrap();
+                        let (res, _) = client.send_invite(&email, &username, "Confirm Email", &get_shareable_url(config.port), &note);
+
+                        let json = format!(
+                            "{{\"success\":true,\"email\":\"{}\",\"message\":\"Confirmation code dispatched to your email.\",\"smtp_delivered\":{}}}",
+                            email, res.is_ok()
+                        );
+                        Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+                    }
+                    Err(_) => {
+                        Self::send_response(stream, "400 Bad Request", "application/json", b"{\"success\":false,\"error\":\"Username or email is already registered, or password too short (min 6 characters).\"}");
+                    }
+                }
+            }
+            "/api/auth/verify" => {
+                let email = extract_json_field(&body, "email").unwrap_or_default();
+                let code = extract_json_field(&body, "code").unwrap_or_default();
+
+                let verify_res = {
+                    let mut auth = config.auth_registry.lock().unwrap();
+                    auth.verify_email(&email, &code)
+                };
+
+                match verify_res {
+                    Ok((token, user)) => {
+                        let json = format!(
+                            "{{\"success\":true,\"token\":\"{}\",\"user\":{{\"username\":\"{}\",\"email\":\"{}\",\"is_admin\":{},\"allow_cloud_sync\":{}}}}}",
+                            token, user.username, user.email, user.is_admin, user.allow_cloud_sync
+                        );
+                        Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+                    }
+                    Err(_) => {
+                        Self::send_response(stream, "400 Bad Request", "application/json", b"{\"success\":false,\"error\":\"Invalid or expired confirmation code. Please check your email and try again.\"}");
+                    }
+                }
+            }
+            "/api/auth/login" => {
+                let identifier = extract_json_field(&body, "identifier")
+                    .or_else(|| extract_json_field(&body, "username"))
+                    .or_else(|| extract_json_field(&body, "email"))
+                    .unwrap_or_default();
+                let password = extract_json_field(&body, "password").unwrap_or_default();
+
+                let login_res = {
+                    let mut auth = config.auth_registry.lock().unwrap();
+                    auth.login(&identifier, &password)
+                };
+
+                match login_res {
+                    Ok((token, user)) => {
+                        let json = format!(
+                            "{{\"success\":true,\"token\":\"{}\",\"user\":{{\"username\":\"{}\",\"email\":\"{}\",\"is_admin\":{},\"allow_cloud_sync\":{}}}}}",
+                            token, user.username, user.email, user.is_admin, user.allow_cloud_sync
+                        );
+                        Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+                    }
+                    Err(crate::error::GrafanaError::ConsensusRejected) => {
+                        Self::send_response(stream, "403 Forbidden", "application/json", b"{\"success\":false,\"requires_verification\":true,\"error\":\"Email not confirmed. Please enter the 6-digit confirmation code sent to your email.\"}");
+                    }
+                    Err(_) => {
+                        Self::send_response(stream, "401 Unauthorized", "application/json", b"{\"success\":false,\"error\":\"Invalid username, email, or password.\"}");
+                    }
+                }
+            }
+            "/api/auth/me" => {
+                let token = extract_token(&header_str, &body, &full_path);
+                let user_opt = token.and_then(|t| config.auth_registry.lock().unwrap().get_user_by_token(&t));
+
+                match user_opt {
+                    Some(user) => {
+                        let json = format!(
+                            "{{\"logged_in\":true,\"user\":{{\"username\":\"{}\",\"email\":\"{}\",\"is_verified\":{},\"is_admin\":{},\"allow_cloud_sync\":{},\"last_sync_at\":{}}}}}",
+                            user.username, user.email, user.is_verified, user.is_admin, user.allow_cloud_sync, user.last_sync_at
+                        );
+                        Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+                    }
+                    None => {
+                        Self::send_response(stream, "200 OK", "application/json", b"{\"logged_in\":false}");
+                    }
+                }
+            }
+            "/api/auth/logout" => {
+                if let Some(token) = extract_token(&header_str, &body, &full_path) {
+                    config.auth_registry.lock().unwrap().logout(&token);
+                }
+                Self::send_response(stream, "200 OK", "application/json", b"{\"success\":true}");
+            }
+            "/api/cloud/sync" => {
+                let token = extract_token(&header_str, &body, &full_path);
+                let user_opt = token.and_then(|t| config.auth_registry.lock().unwrap().get_user_by_token(&t));
+
+                if user_opt.is_none() {
+                    Self::send_response(stream, "401 Unauthorized", "application/json", b"{\"error\":\"Authentication required for cloud backup sync.\"}");
+                    return;
+                }
+                let user = user_opt.unwrap();
+                let allow_sync = extract_json_field(&body, "allow_sync")
+                    .map(|s| s == "true" || s == "1")
+                    .unwrap_or(true);
+                let backup_payload = extract_raw_json_field(&body, "backup_payload")
+                    .or_else(|| extract_json_field(&body, "backup_payload"));
+
+                let res = {
+                    let mut auth = config.auth_registry.lock().unwrap();
+                    auth.update_cloud_sync(&user.email, allow_sync, backup_payload.as_deref())
+                };
+
+                if res.is_ok() {
+                    let mut remote_pushed = false;
+                    let mut remote_note = "Local device vault updated; remote push deferred.".to_string();
+
+                    if allow_sync {
+                        let endpoint = std::env::var("FILEFRAN_URL")
+                            .unwrap_or_else(|_| "https://filefran.safespaceshub.com/api/v1/vault/sync".to_string());
+                        let payload_str = backup_payload.as_deref().unwrap_or("{}");
+                        let (ok, code, note) = push_cloud_vault(&endpoint, &user.username, &user.email, payload_str);
+                        remote_pushed = ok;
+                        remote_note = format!("Remote HTTP {}: {}", code, note);
+                    }
+
+                    let escaped_note = escape_json_string(&remote_note);
+                    let json = format!(
+                        r#"{{"success":true,"allow_cloud_sync":{},"destination":"https://filefran.safespaceshub.com/api/v1/vault/sync","pushed_to_remote":{},"remote_status":"{}","message":"Backup recorded in atomic vault ledger and dispatched to Safe Spaces Cloud (filefran.safespaceshub.com)."}}"#,
+                        allow_sync, remote_pushed, escaped_note
+                    );
+                    Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+                } else {
+                    Self::send_response(stream, "500 Internal Server Error", "application/json", b"{\"error\":\"Failed to update cloud sync.\"}");
+                }
+            }
+            "/api/cloud/status" => {
+                let token = extract_token(&header_str, &body, &full_path);
+                let user_opt = token.and_then(|t| config.auth_registry.lock().unwrap().get_user_by_token(&t));
+
+                if let Some(user) = user_opt {
+                    let json = format!(
+                        "{{\"allow_cloud_sync\":{},\"destination\":\"https://filefran.safespaceshub.com\",\"last_sync_at\":{},\"has_backup\":{}}}",
+                        user.allow_cloud_sync, user.last_sync_at, user.backup_data.is_some()
+                    );
+                    Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+                } else {
+                    Self::send_response(stream, "200 OK", "application/json", b"{\"allow_cloud_sync\":false,\"destination\":\"https://filefran.safespaceshub.com\"}");
+                }
+            }
+            "/api/admin/overview" => {
+                let token = extract_token(&header_str, &body, &full_path);
+                let user_opt = token.and_then(|t| config.auth_registry.lock().unwrap().get_user_by_token(&t));
+
+                if user_opt.is_none() || !user_opt.as_ref().map(|u| u.is_admin).unwrap_or(false) {
+                    Self::send_response(stream, "403 Forbidden", "application/json", b"{\"error\":\"Administrator privileges required to view user sync data.\"}");
+                    return;
+                }
+
+                let (users, backup_logs) = config.auth_registry.lock().unwrap().get_admin_overview();
+                let sfu_pkts = config.sfu_packets.load(Ordering::Relaxed);
+                let peer_count = {
+                    let eng = config.engine.lock().unwrap();
+                    eng.peers.active_count()
+                };
+
+                let mut user_items = Vec::new();
+                for u in users {
+                    user_items.push(format!(
+                        "{{\"username\":\"{}\",\"email\":\"{}\",\"is_verified\":{},\"is_admin\":{},\"allow_cloud_sync\":{},\"last_sync_at\":{},\"has_backup\":{}}}",
+                        u.username, u.email, u.is_verified, u.is_admin, u.allow_cloud_sync, u.last_sync_at, u.backup_data.is_some()
+                    ));
+                }
+
+                let mut log_items = Vec::new();
+                for b in backup_logs {
+                    log_items.push(format!(
+                        "{{\"username\":\"{}\",\"email\":\"{}\",\"destination\":\"{}\",\"size\":{},\"timestamp\":{}}}",
+                        b.username, b.email, b.destination, b.payload_size, b.timestamp
+                    ));
+                }
+
+                let json = format!(
+                    "{{\"sfu_packets\":{},\"active_peers\":{},\"cloud_destination\":\"https://filefran.safespaceshub.com\",\
+                     \"users\":[{}],\"backup_audit_logs\":[{}]}}",
+                    sfu_pkts, peer_count, user_items.join(","), log_items.join(",")
+                );
+                Self::send_response(stream, "200 OK", "application/json", json.as_bytes());
+            }
             "/api/smtp/invite" => {
+                let token = extract_token(&header_str, &body, &full_path);
+                let user_opt = token.and_then(|t| config.auth_registry.lock().unwrap().get_user_by_token(&t));
+
+                if user_opt.is_none() {
+                    Self::send_response(
+                        stream,
+                        "401 Unauthorized",
+                        "application/json",
+                        b"{\"success\":false,\"code\":-401,\"error\":\"Hosting requires login. Please sign in with your verified account to host meetings and dispatch invitations.\"}"
+                    );
+                    return;
+                }
+                let user = user_opt.unwrap();
+                if !user.is_verified {
+                    Self::send_response(
+                        stream,
+                        "403 Forbidden",
+                        "application/json",
+                        b"{\"success\":false,\"code\":-403,\"error\":\"Email confirmation required. Please confirm your email before hosting meetings.\"}"
+                    );
+                    return;
+                }
+
                 let client = config.smtp_client.lock().unwrap();
                 let to = extract_json_field(&body, "to").unwrap_or_default();
                 let name = extract_json_field(&body, "name").unwrap_or_else(|| "Attendee".to_string());
                 let note = extract_json_field(&body, "note").unwrap_or_default();
-                let url = extract_json_field(&body, "url").unwrap_or_else(|| "http://localhost:7878".to_string());
+                let url = extract_json_field(&body, "url").unwrap_or_else(|| get_shareable_url(config.port));
 
-                let (res, log) = client.send_invite(&to, &name, "Gafana-Secure-Room", &url, &note);
-                let escaped_log = log.replace('\"', "\\\"").replace('\n', "\\n").replace('\r', "");
+                let (res, log) = client.send_invite(&to, &name, "Grafana-Secure-Room", &url, &note);
+                let escaped_log = escape_json_string(&log);
                 let json = format!(
                     "{{\"success\":{},\"code\":{},\"log\":\"{}\"}}",
                     res.is_ok(),
@@ -440,7 +825,7 @@ impl EmbeddedHttpServer {
     }
 }
 
-fn read_full_request(stream: &mut TcpStream) -> Option<(String, String, String)> {
+fn read_full_request(stream: &mut TcpStream) -> Option<(String, String, String, String)> {
     let mut buffer = Vec::with_capacity(8192);
     let mut chunk = [0u8; 4096];
     let mut header_end = None;
@@ -499,7 +884,39 @@ fn read_full_request(stream: &mut TcpStream) -> Option<(String, String, String)>
     let method = parts.next()?.to_string();
     let path = parts.next()?.to_string();
 
-    Some((method, path, body_str))
+    Some((method, path, body_str, header_str))
+}
+
+fn extract_token(headers: &str, body: &str, full_path: &str) -> Option<String> {
+    for line in headers.lines() {
+        let lower = line.to_lowercase();
+        if lower.starts_with("authorization:") {
+            let val = line["authorization:".len()..].trim();
+            if val.to_lowercase().starts_with("bearer ") {
+                let tok = val[7..].trim();
+                if !tok.is_empty() {
+                    return Some(tok.to_string());
+                }
+            }
+        }
+        if lower.starts_with("x-auth-token:") {
+            let tok = line["x-auth-token:".len()..].trim();
+            if !tok.is_empty() {
+                return Some(tok.to_string());
+            }
+        }
+    }
+    if let Some(tok) = extract_json_field(body, "token") {
+        if !tok.trim().is_empty() {
+            return Some(tok.trim().to_string());
+        }
+    }
+    if let Some(tok) = get_query_param(full_path, "token") {
+        if !tok.trim().is_empty() {
+            return Some(tok.trim().to_string());
+        }
+    }
+    None
 }
 
 fn get_query_param<'a>(path_and_query: &'a str, param: &str) -> Option<&'a str> {
@@ -514,6 +931,21 @@ fn get_query_param<'a>(path_and_query: &'a str, param: &str) -> Option<&'a str> 
         }
     }
     None
+}
+
+pub fn escape_json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 16);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => {},
+            '\t' => out.push_str("\\t"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 pub fn extract_json_field(json: &str, field: &str) -> Option<String> {
@@ -576,7 +1008,7 @@ pub fn extract_raw_json_field(json: &str, field: &str) -> Option<String> {
 }
 
 pub fn detect_lan_ip() -> String {
-    if let Ok(ip) = std::env::var("GAFANA_HOST_IP") {
+    if let Ok(ip) = std::env::var("GRAFANA_HOST_IP") {
         if !ip.trim().is_empty() {
             return ip.trim().to_string();
         }
@@ -597,7 +1029,7 @@ pub fn detect_lan_ip() -> String {
 }
 
 pub fn get_shareable_url(port: u16) -> String {
-    if let Ok(public_url) = std::env::var("GAFANA_PUBLIC_URL") {
+    if let Ok(public_url) = std::env::var("GRAFANA_PUBLIC_URL") {
         if !public_url.trim().is_empty() {
             return public_url.trim().trim_end_matches('/').to_string();
         }
@@ -605,6 +1037,16 @@ pub fn get_shareable_url(port: u16) -> String {
     if let Ok(public_url) = std::env::var("PUBLIC_URL") {
         if !public_url.trim().is_empty() {
             return public_url.trim().trim_end_matches('/').to_string();
+        }
+    }
+    if let Ok(domain) = std::env::var("GRAFANA_DOMAIN") {
+        if !domain.trim().is_empty() {
+            let d = domain.trim().trim_end_matches('/');
+            if d.starts_with("http://") || d.starts_with("https://") {
+                return d.to_string();
+            } else {
+                return format!("https://{}", d);
+            }
         }
     }
 

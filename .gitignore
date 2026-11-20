@@ -5,3 +5,5 @@
 *.log
 .DS_Store
 Thumbs.db
+scratch/
+safespaces_footer.html

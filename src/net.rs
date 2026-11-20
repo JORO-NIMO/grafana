@@ -3,7 +3,7 @@
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::error::{GafanaError, GafanaResult};
+use crate::error::{GrafanaError, GrafanaResult};
 use crate::protocol::*;
 
 /// UDP Network Transport
@@ -27,7 +27,7 @@ impl NetTransport {
     }
 
     /// Initialize non-blocking UDP socket and resolve relay address.
-    pub fn init(&mut self, relay_host: &str, relay_port: u16) -> GafanaResult<()> {
+    pub fn init(&mut self, relay_host: &str, relay_port: u16) -> GrafanaResult<()> {
         let port = if relay_port > 0 { relay_port } else { 8765 };
         let host = if relay_host.is_empty() || relay_host == "local" {
             "127.0.0.1"
@@ -38,15 +38,15 @@ impl NetTransport {
         let target_str = format!("{}:{}", host, port);
         let resolved_addr = target_str
             .to_socket_addrs()
-            .map_err(|_| GafanaError::Network)?
+            .map_err(|_| GrafanaError::Network)?
             .next()
             .unwrap_or_else(|| "127.0.0.1:8765".parse().unwrap());
 
         self.relay_addr = resolved_addr;
 
         // Bind ephemeral local UDP port (0)
-        let sock = UdpSocket::bind("0.0.0.0:0").map_err(|_| GafanaError::Socket)?;
-        sock.set_nonblocking(true).map_err(|_| GafanaError::Socket)?;
+        let sock = UdpSocket::bind("0.0.0.0:0").map_err(|_| GrafanaError::Socket)?;
+        sock.set_nonblocking(true).map_err(|_| GrafanaError::Socket)?;
         let _ = sock.set_broadcast(true);
 
         self.local_port = sock.local_addr().map(|a| a.port()).unwrap_or(0);
@@ -69,9 +69,9 @@ impl NetTransport {
         sender_id: &str,
         opcode: u8,
         payload: &[u8],
-    ) -> GafanaResult<()> {
-        let sock = self.socket.as_ref().ok_or(GafanaError::NotInitialized)?;
-        let max_chunk_payload = GAFANA_NET_MTU - GAFANA_HEADER_SIZE;
+    ) -> GrafanaResult<()> {
+        let sock = self.socket.as_ref().ok_or(GrafanaError::NotInitialized)?;
+        let max_chunk_payload = GRAFANA_NET_MTU - GRAFANA_HEADER_SIZE;
         let payload_len = payload.len();
 
         let now_ms = SystemTime::now()
@@ -104,9 +104,9 @@ impl NetTransport {
                     checksum,
                 );
 
-                let mut packet = vec![0u8; GAFANA_HEADER_SIZE + chunk_slice.len()];
-                hdr.write_to(&mut packet[..GAFANA_HEADER_SIZE]);
-                packet[GAFANA_HEADER_SIZE..].copy_from_slice(chunk_slice);
+                let mut packet = vec![0u8; GRAFANA_HEADER_SIZE + chunk_slice.len()];
+                hdr.write_to(&mut packet[..GRAFANA_HEADER_SIZE]);
+                packet[GRAFANA_HEADER_SIZE..].copy_from_slice(chunk_slice);
 
                 let _ = sock.send_to(&packet, self.relay_addr);
             }
@@ -133,36 +133,36 @@ impl NetTransport {
                 checksum,
             );
 
-            let mut packet = vec![0u8; GAFANA_HEADER_SIZE + payload.len()];
-            hdr.write_to(&mut packet[..GAFANA_HEADER_SIZE]);
+            let mut packet = vec![0u8; GRAFANA_HEADER_SIZE + payload.len()];
+            hdr.write_to(&mut packet[..GRAFANA_HEADER_SIZE]);
             if !payload.is_empty() {
-                packet[GAFANA_HEADER_SIZE..].copy_from_slice(payload);
+                packet[GRAFANA_HEADER_SIZE..].copy_from_slice(payload);
             }
 
             sock.send_to(&packet, self.relay_addr)
                 .map(|_| ())
-                .map_err(|_| GafanaError::Network)
+                .map_err(|_| GrafanaError::Network)
         }
     }
 
     /// Non-blocking receive datagram. Returns `(header, payload, sender_addr)` on success.
     pub fn recv(&self) -> Option<(NetPacketHeader, Vec<u8>, SocketAddr)> {
         let sock = self.socket.as_ref()?;
-        let mut buf = [0u8; GAFANA_MAX_PACKET_SIZE];
+        let mut buf = [0u8; GRAFANA_MAX_PACKET_SIZE];
 
         let (n, src) = sock.recv_from(&mut buf).ok()?;
-        if n < GAFANA_HEADER_SIZE {
+        if n < GRAFANA_HEADER_SIZE {
             return None;
         }
 
         let hdr = NetPacketHeader::parse(&buf[..n])?;
         let plen = hdr.payload_len as usize;
 
-        if n < GAFANA_HEADER_SIZE + plen {
+        if n < GRAFANA_HEADER_SIZE + plen {
             return None;
         }
 
-        let payload = buf[GAFANA_HEADER_SIZE..GAFANA_HEADER_SIZE + plen].to_vec();
+        let payload = buf[GRAFANA_HEADER_SIZE..GRAFANA_HEADER_SIZE + plen].to_vec();
 
         // Verify Fletcher-32 checksum
         if plen > 0 {

@@ -1,4 +1,4 @@
-//! Gafana Engine Consensus & Zero-Data Architecture Test Suite (Rust Edition)
+//! Grafana Engine Consensus & Zero-Data Architecture Test Suite (Rust Edition)
 //!
 //! Mirrors `examples/consensus_test.c`:
 //! 1. Ephemeral room creation and peer discovery
@@ -13,16 +13,16 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use gafana::consensus::{ConsentState, RecordingType};
-use gafana::engine::{EngineCallbacks, EngineConfig, GafanaEngine};
-use gafana::error::GafanaError;
-use gafana::media::AudioFrame;
-use gafana::protocol::*;
+use grafana::consensus::{ConsentState, RecordingType};
+use grafana::engine::{EngineCallbacks, EngineConfig, GrafanaEngine};
+use grafana::error::GrafanaError;
+use grafana::media::AudioFrame;
+use grafana::protocol::*;
 
 fn main() {
     println!("=================================================================");
-    println!(" Gafana Engine - Consensus & Zero-Data Architecture Test Suite   ");
-    println!(" Version: {}", gafana::VERSION);
+    println!(" Grafana Engine - Consensus & Zero-Data Architecture Test Suite   ");
+    println!(" Version: {}", grafana::VERSION);
     println!("=================================================================\n");
 
     let consent_requested_count = Arc::new(AtomicU32::new(0));
@@ -54,7 +54,7 @@ fn main() {
 
     let mut config = EngineConfig::default();
     config.relay_port = 8765;
-    let mut alice = GafanaEngine::new(config, callbacks);
+    let mut alice = GrafanaEngine::new(config, callbacks);
 
     // Alice joins room
     alice
@@ -102,7 +102,7 @@ fn main() {
     println!("\n--- SCENARIO B: Multi-User Consensus & Veto Protocol ---");
     // Simulate Bob and Charlie joining via packet injection
     let bob_join_hdr = NetPacketHeader::new(
-        GAFANA_OP_JOIN,
+        GRAFANA_OP_JOIN,
         1,
         100,
         "Room_Alpha99",
@@ -115,7 +115,7 @@ fn main() {
     alice.handle_packet(&bob_join_hdr, b"Bob");
 
     let charlie_join_hdr = NetPacketHeader::new(
-        GAFANA_OP_JOIN,
+        GRAFANA_OP_JOIN,
         2,
         101,
         "Room_Alpha99",
@@ -144,7 +144,7 @@ fn main() {
 
     // Attempting to record prematurely MUST FAIL
     let early_res = alice.start_recording(ballot_multi, "unauthorized.mp4");
-    assert_eq!(early_res.err(), Some(GafanaError::ConsentPending));
+    assert_eq!(early_res.err(), Some(GrafanaError::ConsentPending));
     println!("-> VERIFIED: Premature recording attempt blocked with ConsentPending");
 
     // Bob votes YES
@@ -155,7 +155,7 @@ fn main() {
         voter_id: "peer_bob".to_string(),
     };
     let v1_hdr = NetPacketHeader::new(
-        GAFANA_OP_CONSENT_VOTE,
+        GRAFANA_OP_CONSENT_VOTE,
         3,
         105,
         "Room_Alpha99",
@@ -175,7 +175,7 @@ fn main() {
         voter_id: "peer_charlie".to_string(),
     };
     let v2_hdr = NetPacketHeader::new(
-        GAFANA_OP_CONSENT_VOTE,
+        GRAFANA_OP_CONSENT_VOTE,
         4,
         106,
         "Room_Alpha99",
@@ -192,7 +192,7 @@ fn main() {
         ConsentState::Rejected
     );
     let vetoed_res = alice.start_recording(ballot_multi, "unauthorized.mp4");
-    assert_eq!(vetoed_res.err(), Some(GafanaError::ConsentDenied));
+    assert_eq!(vetoed_res.err(), Some(GrafanaError::ConsentDenied));
     println!("-> VERIFIED: Single participant veto successfully REJECTED recording!");
 
     // --- Scenario C: 100% Unanimous Approval + Mid-Stream Revocation ---
@@ -236,7 +236,7 @@ fn main() {
         revoker_id: "peer_bob".to_string(),
     };
     let rev_hdr = NetPacketHeader::new(
-        GAFANA_OP_CONSENT_REVOKE,
+        GRAFANA_OP_CONSENT_REVOKE,
         10,
         200,
         "Room_Alpha99",
@@ -254,6 +254,6 @@ fn main() {
     alice.leave_room().expect("Should cleanly leave room");
 
     println!("\n=================================================================");
-    println!(" ALL GAFANA RUST TESTS PASSED SUCCESSFULLY! ZERO DATA LEAKAGE CONFIRMED ");
+    println!(" ALL GRAFANA RUST TESTS PASSED SUCCESSFULLY! ZERO DATA LEAKAGE CONFIRMED ");
     println!("=================================================================");
 }

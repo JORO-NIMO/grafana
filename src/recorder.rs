@@ -5,7 +5,7 @@ use std::io::{Seek, SeekFrom, Write};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::consensus::RecordingType;
-use crate::error::{GafanaError, GafanaResult};
+use crate::error::{GrafanaError, GrafanaResult};
 
 pub struct LocalRecorder {
     pub is_recording: bool,
@@ -38,9 +38,9 @@ impl LocalRecorder {
         ballot_id: u32,
         rec_type: RecordingType,
         output_path: &str,
-    ) -> GafanaResult<()> {
+    ) -> GrafanaResult<()> {
         if self.is_recording {
-            return Err(GafanaError::RecordingActive);
+            return Err(GrafanaError::RecordingActive);
         }
 
         let mut file = OpenOptions::new()
@@ -48,7 +48,7 @@ impl LocalRecorder {
             .write(true)
             .truncate(true)
             .open(output_path)
-            .map_err(|_| GafanaError::Io)?;
+            .map_err(|_| GrafanaError::Io)?;
 
         let mut bytes_written = 0u64;
 
@@ -69,13 +69,13 @@ impl LocalRecorder {
             wav_hdr[36..40].copy_from_slice(b"data");
             wav_hdr[40..44].copy_from_slice(&0u32.to_le_bytes()); // Placeholder
 
-            file.write_all(&wav_hdr).map_err(|_| GafanaError::Io)?;
-            file.flush().map_err(|_| GafanaError::Io)?;
+            file.write_all(&wav_hdr).map_err(|_| GrafanaError::Io)?;
+            file.flush().map_err(|_| GrafanaError::Io)?;
             bytes_written += 44;
         } else {
-            let banner = b"GAFANA_AV_CONTAINER_V1\n";
-            file.write_all(banner).map_err(|_| GafanaError::Io)?;
-            file.flush().map_err(|_| GafanaError::Io)?;
+            let banner = b"GRAFANA_AV_CONTAINER_V1\n";
+            file.write_all(banner).map_err(|_| GrafanaError::Io)?;
+            file.flush().map_err(|_| GrafanaError::Io)?;
             bytes_written += banner.len() as u64;
         }
 
@@ -102,18 +102,18 @@ impl LocalRecorder {
     }
 
     /// Write PCM audio samples to disk sink.
-    pub fn write_audio_samples(&mut self, samples: &[i16]) -> GafanaResult<()> {
+    pub fn write_audio_samples(&mut self, samples: &[i16]) -> GrafanaResult<()> {
         if !self.is_recording {
             return Ok(());
         }
-        let file = self.file.as_mut().ok_or(GafanaError::Io)?;
+        let file = self.file.as_mut().ok_or(GrafanaError::Io)?;
 
         let mut byte_buf = Vec::with_capacity(samples.len() * 2);
         for &s in samples {
             byte_buf.extend_from_slice(&s.to_le_bytes());
         }
 
-        file.write_all(&byte_buf).map_err(|_| GafanaError::Io)?;
+        file.write_all(&byte_buf).map_err(|_| GrafanaError::Io)?;
         self.bytes_written += byte_buf.len() as u64;
         self.frames_written += 1;
         Ok(())
@@ -126,11 +126,11 @@ impl LocalRecorder {
         width: u32,
         height: u32,
         timestamp_ms: u32,
-    ) -> GafanaResult<()> {
+    ) -> GrafanaResult<()> {
         if !self.is_recording || self.rec_type == RecordingType::AudioOnly {
             return Ok(());
         }
-        let file = self.file.as_mut().ok_or(GafanaError::Io)?;
+        let file = self.file.as_mut().ok_or(GrafanaError::Io)?;
 
         let mut meta = [0u8; 16];
         meta[0..4].copy_from_slice(&width.to_le_bytes());
@@ -138,17 +138,17 @@ impl LocalRecorder {
         meta[8..12].copy_from_slice(&(data.len() as u32).to_le_bytes());
         meta[12..16].copy_from_slice(&timestamp_ms.to_le_bytes());
 
-        file.write_all(&meta).map_err(|_| GafanaError::Io)?;
-        file.write_all(data).map_err(|_| GafanaError::Io)?;
+        file.write_all(&meta).map_err(|_| GrafanaError::Io)?;
+        file.write_all(data).map_err(|_| GrafanaError::Io)?;
         self.bytes_written += 16 + data.len() as u64;
         self.frames_written += 1;
         Ok(())
     }
 
     /// Finalize and close local recording file.
-    pub fn stop(&mut self) -> GafanaResult<()> {
+    pub fn stop(&mut self) -> GrafanaResult<()> {
         if !self.is_recording {
-            return Err(GafanaError::RecordingInactive);
+            return Err(GrafanaError::RecordingInactive);
         }
 
         if let Some(mut file) = self.file.take() {

@@ -7,6 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct PeerInfo {
     pub peer_id: String,
     pub display_name: String,
+    pub avatar: String,
+    pub status: String,
     pub is_speaking: bool,
     pub has_video: bool,
     pub has_screen: bool,
@@ -30,6 +32,8 @@ impl PeerInfo {
         Self {
             peer_id: peer_id.to_string(),
             display_name: display_name.to_string(),
+            avatar: String::new(),
+            status: "admitted".to_string(),
             is_speaking: false,
             has_video: false,
             has_screen: false,
@@ -53,6 +57,7 @@ pub struct PeerNode {
 pub struct PeerRegistry {
     peers: HashMap<String, PeerNode>,
     self_peer_id: String,
+    pub auto_admit: bool,
 }
 
 impl PeerRegistry {
@@ -60,6 +65,7 @@ impl PeerRegistry {
         let mut reg = Self {
             peers: HashMap::new(),
             self_peer_id: self_peer_id.to_string(),
+            auto_admit: true,
         };
 
         let self_node = PeerNode {
@@ -77,6 +83,15 @@ impl PeerRegistry {
     }
 
     pub fn insert_or_update(&mut self, peer_id: &str, display_name: &str) -> (bool, PeerInfo) {
+        self.insert_or_update_with_avatar(peer_id, display_name, "")
+    }
+
+    pub fn insert_or_update_with_avatar(
+        &mut self,
+        peer_id: &str,
+        display_name: &str,
+        avatar: &str,
+    ) -> (bool, PeerInfo) {
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u32)
@@ -85,10 +100,24 @@ impl PeerRegistry {
         if let Some(node) = self.peers.get_mut(peer_id) {
             node.last_seen_ms = now_ms;
             node.active = true;
+            if !display_name.is_empty() {
+                node.info.display_name = display_name.to_string();
+            }
+            if !avatar.is_empty() {
+                node.info.avatar = avatar.to_string();
+            }
             (false, node.info.clone())
         } else {
             let mut info = PeerInfo::new(peer_id, display_name);
             info.last_heartbeat_ms = now_ms;
+            if !avatar.is_empty() {
+                info.avatar = avatar.to_string();
+            }
+            if !self.auto_admit && peer_id != self.self_peer_id {
+                info.status = "waiting".to_string();
+            } else {
+                info.status = "admitted".to_string();
+            }
             let node = PeerNode {
                 info: info.clone(),
                 active: true,
@@ -99,6 +128,46 @@ impl PeerRegistry {
             self.peers.insert(peer_id.to_string(), node);
             (true, info)
         }
+    }
+
+    pub fn admit_peer(&mut self, peer_id: &str) -> bool {
+        if let Some(node) = self.peers.get_mut(peer_id) {
+            node.info.status = "admitted".to_string();
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn deny_peer(&mut self, peer_id: &str) -> bool {
+        if let Some(node) = self.peers.get_mut(peer_id) {
+            node.info.status = "denied".to_string();
+            node.active = false;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn update_profile(&mut self, peer_id: &str, display_name: &str, avatar: &str) -> bool {
+        if let Some(node) = self.peers.get_mut(peer_id) {
+            if !display_name.is_empty() {
+                node.info.display_name = display_name.to_string();
+            }
+            if !avatar.is_empty() {
+                node.info.avatar = avatar.to_string();
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn get_peer_status(&self, peer_id: &str) -> String {
+        self.peers
+            .get(peer_id)
+            .map(|n| n.info.status.clone())
+            .unwrap_or_else(|| "unknown".to_string())
     }
 
     pub fn touch_heartbeat(&mut self, peer_id: &str) {

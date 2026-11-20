@@ -1,4 +1,4 @@
-//! Standalone Stateless SFU Relay Server (`gafana-relay`)
+//! Standalone Stateless SFU Relay Server (`grafana-relay`)
 //!
 //! Sub-millisecond in-memory UDP forwarding with zero disk or database overhead.
 
@@ -6,7 +6,7 @@ use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use gafana::sfu::StatelessSfuRelay;
+use grafana::sfu::StatelessSfuRelay;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -17,7 +17,7 @@ fn main() {
     };
 
     println!("=================================================================");
-    println!(" Gafana Stateless SFU Relay Server (Rust Edition v1.2.0)         ");
+    println!(" Grafana Stateless SFU Relay Server (Rust Edition v1.2.0)         ");
     println!(" Zero Cloud Storage | Memory Packet Forwarder | Ephemeral Mesh  ");
     println!(" Listening on UDP port: {}                                      ", port);
     println!("=================================================================\n");

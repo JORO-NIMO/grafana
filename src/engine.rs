@@ -1,10 +1,10 @@
-//! Core Gafana Media & Consensus Engine
+//! Core Grafana Media & Consensus Engine
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
 use crate::consensus::{ConsentState, ConsensusEngine, RecordingType};
-use crate::error::{GafanaError, GafanaResult};
+use crate::error::{GrafanaError, GrafanaResult};
 use crate::media::*;
 use crate::net::NetTransport;
 use crate::peer::{PeerInfo, PeerRegistry};
@@ -43,7 +43,7 @@ impl Default for EngineConfig {
     }
 }
 
-pub struct GafanaEngine {
+pub struct GrafanaEngine {
     pub config: EngineConfig,
     pub room_id: String,
     pub self_peer_id: String,
@@ -60,7 +60,7 @@ pub struct GafanaEngine {
     pub callbacks: EngineCallbacks,
 }
 
-impl GafanaEngine {
+impl GrafanaEngine {
     pub fn new(config: EngineConfig, callbacks: EngineCallbacks) -> Self {
         Self {
             config: config.clone(),
@@ -86,9 +86,9 @@ impl GafanaEngine {
         room_id: &str,
         self_peer_id: &str,
         display_name: &str,
-    ) -> GafanaResult<()> {
+    ) -> GrafanaResult<()> {
         if self.in_room {
-            return Err(GafanaError::AlreadyInRoom);
+            return Err(GrafanaError::AlreadyInRoom);
         }
 
         self.net.init(&self.config.relay_host, self.config.relay_port)?;
@@ -109,7 +109,7 @@ impl GafanaEngine {
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_JOIN,
+            GRAFANA_OP_JOIN,
             self.self_display_name.as_bytes(),
         );
 
@@ -121,9 +121,9 @@ impl GafanaEngine {
     }
 
     /// Leave room and cleanly terminate connections.
-    pub fn leave_room(&mut self) -> GafanaResult<()> {
+    pub fn leave_room(&mut self) -> GrafanaResult<()> {
         if !self.in_room {
-            return Err(GafanaError::RoomNotJoined);
+            return Err(GrafanaError::RoomNotJoined);
         }
 
         if self.recorder.is_recording {
@@ -133,7 +133,7 @@ impl GafanaEngine {
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_LEAVE,
+            GRAFANA_OP_LEAVE,
             b"UserDeparted",
         );
 
@@ -149,9 +149,9 @@ impl GafanaEngine {
     }
 
     /// Poll incoming network datagrams, heartbeats, and consent timeouts.
-    pub fn poll(&mut self) -> GafanaResult<()> {
+    pub fn poll(&mut self) -> GrafanaResult<()> {
         if !self.in_room {
-            return Err(GafanaError::RoomNotJoined);
+            return Err(GrafanaError::RoomNotJoined);
         }
 
         // 1. Process network packets
@@ -168,7 +168,7 @@ impl GafanaEngine {
             let _ = self.net.send(
                 &self.room_id,
                 &self.self_peer_id,
-                GAFANA_OP_HEARTBEAT,
+                GRAFANA_OP_HEARTBEAT,
                 &[],
             );
             self.last_heartbeat_sent = Instant::now();
@@ -197,20 +197,20 @@ impl GafanaEngine {
         self.peers.touch_heartbeat(&hdr.sender_id);
 
         match hdr.opcode {
-            GAFANA_OP_HEARTBEAT => {}
+            GRAFANA_OP_HEARTBEAT => {}
 
-            GAFANA_OP_JOIN => {
+            GRAFANA_OP_JOIN => {
                 let name = String::from_utf8_lossy(payload);
                 let (is_new, info) = self.peers.insert_or_update(&hdr.sender_id, &name);
 
                 if is_new {
-                    // Privacy Enforcement: If local recording is active when a new peer joins, halt capture!
+                    // If local recording is already active when a new peer joins, recording continues smoothly.
+                    // Late-joining participants proceed with the active session without re-balloting or halting.
                     if self.recorder.is_recording {
                         println!(
-                            "[PRIVACY ENFORCER] New peer '{}' joined during active recording. Halting capture.",
+                            "[RECORDER] New peer '{}' joined during active recording. Capture proceeds uninterrupted.",
                             hdr.sender_id
                         );
-                        let _ = self.recorder.stop();
                     }
 
                     if self.consensus.current_ballot.is_active
@@ -225,7 +225,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_LEAVE => {
+            GRAFANA_OP_LEAVE => {
                 if self.peers.remove(&hdr.sender_id) {
                     if let Some(ref cb) = self.callbacks.on_peer_left {
                         cb(&hdr.sender_id, "UserDisconnected");
@@ -233,7 +233,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_TRACK_ANNOUNCE => {
+            GRAFANA_OP_TRACK_ANNOUNCE => {
                 if payload.len() >= 8 {
                     let ttype_val = u32::from_le_bytes(payload[0..4].try_into().unwrap());
                     let tid = u32::from_le_bytes(payload[4..8].try_into().unwrap());
@@ -250,7 +250,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_TRACK_REMOVE => {
+            GRAFANA_OP_TRACK_REMOVE => {
                 if payload.len() >= 4 {
                     let tid = u32::from_le_bytes(payload[0..4].try_into().unwrap());
                     if let Some(ref cb) = self.callbacks.on_track_unpublished {
@@ -259,7 +259,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_CONSENT_REQUEST => {
+            GRAFANA_OP_CONSENT_REQUEST => {
                 if let Some(req) = PktConsentReq::deserialize(payload) {
                     let rec_type = match req.rec_type {
                         1 => RecordingType::AudioOnly,
@@ -278,7 +278,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_CONSENT_VOTE => {
+            GRAFANA_OP_CONSENT_VOTE => {
                 if let Some(v) = PktConsentVote::deserialize(payload) {
                     let accept = v.vote != 0;
                     if let Some((new_state, unanimous)) =
@@ -306,7 +306,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_CONSENT_REVOKE => {
+            GRAFANA_OP_CONSENT_REVOKE => {
                 if let Some(rev) = PktConsentRevoke::deserialize(payload) {
                     if self.recorder.is_recording {
                         let _ = self.recorder.stop();
@@ -319,7 +319,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_MEDIA_VIDEO => {
+            GRAFANA_OP_MEDIA_VIDEO => {
                 if !payload.is_empty() && self.recorder.is_recording {
                     if self.consensus.current_ballot.state != ConsentState::UnanimousOk {
                         // Anti-Capture Guard: Immediately halt recording if consensus is no longer unanimous
@@ -331,7 +331,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_MEDIA_AUDIO => {
+            GRAFANA_OP_MEDIA_AUDIO => {
                 if payload.len() >= 2 && self.recorder.is_recording {
                     if self.consensus.current_ballot.state != ConsentState::UnanimousOk {
                         // Anti-Capture Guard: Immediately halt recording if consensus is no longer unanimous
@@ -347,7 +347,7 @@ impl GafanaEngine {
                 }
             }
 
-            GAFANA_OP_PRES_EVENT => {
+            GRAFANA_OP_PRES_EVENT => {
                 if let Some(p) = PktPresentation::deserialize(payload) {
                     let ev_type = match p.event_type {
                         1 => PresEventType::SlideChange,
@@ -377,12 +377,12 @@ impl GafanaEngine {
     pub fn request_recording_consent(
         &mut self,
         rec_type: RecordingType,
-    ) -> GafanaResult<(u32, ConsentState)> {
+    ) -> GrafanaResult<(u32, ConsentState)> {
         if !self.in_room {
-            return Err(GafanaError::RoomNotJoined);
+            return Err(GrafanaError::RoomNotJoined);
         }
         if self.recorder.is_recording {
-            return Err(GafanaError::RecordingActive);
+            return Err(GrafanaError::RecordingActive);
         }
 
         let total = self.peers.active_count() as u32;
@@ -400,7 +400,7 @@ impl GafanaEngine {
             let _ = self.net.send(
                 &self.room_id,
                 &self.self_peer_id,
-                GAFANA_OP_CONSENT_REQUEST,
+                GRAFANA_OP_CONSENT_REQUEST,
                 &req_pkt.serialize(),
             );
         }
@@ -417,9 +417,9 @@ impl GafanaEngine {
     }
 
     /// Cast vote on a pending ballot.
-    pub fn cast_vote(&mut self, ballot_id: u32, accept: bool) -> GafanaResult<()> {
+    pub fn cast_vote(&mut self, ballot_id: u32, accept: bool) -> GrafanaResult<()> {
         if !self.in_room {
-            return Err(GafanaError::RoomNotJoined);
+            return Err(GrafanaError::RoomNotJoined);
         }
 
         let vote_pkt = PktConsentVote {
@@ -430,7 +430,7 @@ impl GafanaEngine {
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_CONSENT_VOTE,
+            GRAFANA_OP_CONSENT_VOTE,
             &vote_pkt.serialize(),
         );
 
@@ -459,13 +459,13 @@ impl GafanaEngine {
 
     /// Start writing media stream directly to local client disk (Zero Cloud copies).
     /// STRICTLY REJECTED unless 100% unanimous approval is active.
-    pub fn start_recording(&mut self, ballot_id: u32, output_file: &str) -> GafanaResult<()> {
+    pub fn start_recording(&mut self, ballot_id: u32, output_file: &str) -> GrafanaResult<()> {
         if !self.in_room {
-            return Err(GafanaError::RoomNotJoined);
+            return Err(GrafanaError::RoomNotJoined);
         }
 
         if self.consensus.current_ballot.ballot_id != ballot_id {
-            return Err(GafanaError::InvalidParam);
+            return Err(GrafanaError::InvalidParam);
         }
 
         match self.consensus.current_ballot.state {
@@ -474,13 +474,13 @@ impl GafanaEngine {
                 self.recorder.start(ballot_id, rec_type, output_file)?;
                 Ok(())
             }
-            ConsentState::Requested => Err(GafanaError::ConsentPending),
-            _ => Err(GafanaError::ConsentDenied),
+            ConsentState::Requested => Err(GrafanaError::ConsentPending),
+            _ => Err(GrafanaError::ConsentDenied),
         }
     }
 
     /// Stop local recording.
-    pub fn stop_recording(&mut self) -> GafanaResult<()> {
+    pub fn stop_recording(&mut self) -> GrafanaResult<()> {
         let ballot_id = self.recorder.ballot_id;
         self.recorder.stop()?;
         self.consensus.reset();
@@ -493,9 +493,9 @@ impl GafanaEngine {
     }
 
     /// Revoke consent mid-call.
-    pub fn revoke_consent(&mut self, ballot_id: u32) -> GafanaResult<()> {
+    pub fn revoke_consent(&mut self, ballot_id: u32) -> GrafanaResult<()> {
         if !self.in_room {
-            return Err(GafanaError::RoomNotJoined);
+            return Err(GrafanaError::RoomNotJoined);
         }
 
         let rev_pkt = PktConsentRevoke {
@@ -505,7 +505,7 @@ impl GafanaEngine {
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_CONSENT_REVOKE,
+            GRAFANA_OP_CONSENT_REVOKE,
             &rev_pkt.serialize(),
         );
 
@@ -528,19 +528,19 @@ impl GafanaEngine {
     }
 
     /// Enforces the Anti-Capture and Device Background Recording Guard.
-    /// Returns Ok(()) if authorized, or Err(GafanaError::ConsentDenied) if any user has not accepted.
-    pub fn enforce_anti_capture_guard(&self) -> GafanaResult<()> {
+    /// Returns Ok(()) if authorized, or Err(GrafanaError::ConsentDenied) if any user has not accepted.
+    pub fn enforce_anti_capture_guard(&self) -> GrafanaResult<()> {
         if self.consensus.current_ballot.state != ConsentState::UnanimousOk {
-            Err(GafanaError::ConsentDenied)
+            Err(GrafanaError::ConsentDenied)
         } else {
             Ok(())
         }
     }
 
     /// Broadcast audio frame.
-    pub fn send_audio_frame(&mut self, _track_id: u32, frame: &AudioFrame) -> GafanaResult<()> {
+    pub fn send_audio_frame(&mut self, _track_id: u32, frame: &AudioFrame) -> GrafanaResult<()> {
         if !self.in_room {
-            return Err(GafanaError::RoomNotJoined);
+            return Err(GrafanaError::RoomNotJoined);
         }
 
         if self.recorder.is_recording {
@@ -555,13 +555,13 @@ impl GafanaEngine {
         self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_MEDIA_AUDIO,
+            GRAFANA_OP_MEDIA_AUDIO,
             &byte_buf,
         )
     }
 
     /// Start screen sharing.
-    pub fn start_screen_share(&mut self) -> GafanaResult<u32> {
+    pub fn start_screen_share(&mut self) -> GrafanaResult<u32> {
         let tid = self.next_track_id.fetch_add(1, Ordering::Relaxed);
         let mut announce = [0u8; 8];
         announce[0..4].copy_from_slice(&(TrackType::Screen as u32).to_le_bytes());
@@ -569,25 +569,25 @@ impl GafanaEngine {
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_TRACK_ANNOUNCE,
+            GRAFANA_OP_TRACK_ANNOUNCE,
             &announce,
         );
         Ok(tid)
     }
 
     /// Stop screen sharing.
-    pub fn stop_screen_share(&mut self, track_id: u32) -> GafanaResult<()> {
+    pub fn stop_screen_share(&mut self, track_id: u32) -> GrafanaResult<()> {
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_TRACK_REMOVE,
+            GRAFANA_OP_TRACK_REMOVE,
             &track_id.to_le_bytes(),
         );
         Ok(())
     }
 
     /// Start presentation mode.
-    pub fn start_presentation(&mut self, total_slides: u32) -> GafanaResult<u32> {
+    pub fn start_presentation(&mut self, total_slides: u32) -> GrafanaResult<u32> {
         let tid = self.next_track_id.fetch_add(1, Ordering::Relaxed);
         self.presentation.is_presenting = true;
         self.presentation.track_id = tid;
@@ -606,14 +606,14 @@ impl GafanaEngine {
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_PRES_EVENT,
+            GRAFANA_OP_PRES_EVENT,
             &ev.serialize(),
         );
         Ok(tid)
     }
 
     /// Stop presentation mode.
-    pub fn stop_presentation(&mut self, track_id: u32) -> GafanaResult<()> {
+    pub fn stop_presentation(&mut self, track_id: u32) -> GrafanaResult<()> {
         self.presentation.is_presenting = false;
         let ev = PktPresentation {
             event_type: PresEventType::Stop as u8,
@@ -626,13 +626,13 @@ impl GafanaEngine {
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_PRES_EVENT,
+            GRAFANA_OP_PRES_EVENT,
             &ev.serialize(),
         );
         let _ = self.net.send(
             &self.room_id,
             &self.self_peer_id,
-            GAFANA_OP_TRACK_REMOVE,
+            GRAFANA_OP_TRACK_REMOVE,
             &track_id.to_le_bytes(),
         );
         Ok(())

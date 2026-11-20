@@ -1,22 +1,22 @@
 [package]
-name = "gafana"
+name = "grafana"
 version = "1.2.0"
 edition = "2021"
-authors = ["Gafana Team"]
+authors = ["Grafana Team"]
 description = "High-Performance, Privacy-First, Zero-Data Video Calling Engine in Pure Rust"
-default-run = "gafana"
+default-run = "grafana"
 
 [lib]
-name = "gafana"
+name = "grafana"
 path = "src/lib.rs"
 
 [[bin]]
-name = "gafana"
+name = "grafana"
 path = "src/main.rs"
 
 [[bin]]
-name = "gafana-relay"
-path = "src/bin/gafana_relay.rs"
+name = "grafana-relay"
+path = "src/bin/grafana_relay.rs"
 
 [[example]]
 name = "consensus_test"

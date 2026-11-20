@@ -1,4 +1,4 @@
-//! # Gafana: High-Performance, Privacy-First, Zero-Data Video Calling Engine in Rust
+//! # Grafana: High-Performance, Privacy-First, Zero-Data Video Calling Engine in Rust
 //!
 //! Production Rust Library API (v1.2.0)
 //!
@@ -8,21 +8,24 @@
 //! 3. Dynamic Revocation: Mid-call revocation instantly halts local disk capture.
 //! 4. Scalable Media Architecture: Multi-track Audio, Video, Screen Share, and Presentations.
 
+pub mod auth;
 pub mod consensus;
 pub mod engine;
 pub mod error;
 pub mod http;
 pub mod media;
 pub mod net;
+pub mod openapi;
 pub mod peer;
 pub mod protocol;
 pub mod recorder;
 pub mod sfu;
 pub mod smtp;
 
+pub use auth::{AuthRegistry, UserAccount};
 pub use consensus::{ConsentState, RecordingType};
-pub use engine::{EngineCallbacks, EngineConfig, GafanaEngine};
-pub use error::{GafanaError, GafanaResult};
+pub use engine::{EngineCallbacks, EngineConfig, GrafanaEngine};
+pub use error::{GrafanaError, GrafanaResult};
 pub use media::{AudioFrame, PresentationEvent, TrackType, VideoFrame};
 pub use peer::PeerInfo;
 pub use sfu::StatelessSfuRelay;

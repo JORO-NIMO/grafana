@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "safespaces-grafana": {
+      "command": "python",
+      "args": [
+        "d:\\c test - rust\\mcp\\grafana_mcp_server.py"
+      ],
+      "env": {
+        "GRAFANA_URL": "http://127.0.0.1:7878"
+      }
+    }
+  }
+}

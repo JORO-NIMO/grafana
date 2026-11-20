@@ -1,4 +1,4 @@
-//! Gafana Unified Single-Executable Application (Rust Edition)
+//! Grafana Unified Single-Executable Application (Rust Edition)
 //!
 //! Encapsulates:
 //! 1. In-Memory Stateless SFU Relay Server (UDP Port 8765)
@@ -13,19 +13,19 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use gafana::consensus::{ConsentState, RecordingType};
-use gafana::engine::{EngineCallbacks, EngineConfig, GafanaEngine};
-use gafana::http::{EmbeddedHttpServer, HttpServerConfig};
-use gafana::media::{PresEventType, PresentationEvent};
-use gafana::sfu::StatelessSfuRelay;
-use gafana::smtp::SmtpClient;
+use grafana::consensus::{ConsentState, RecordingType};
+use grafana::engine::{EngineCallbacks, EngineConfig, GrafanaEngine};
+use grafana::http::{EmbeddedHttpServer, HttpServerConfig};
+// Presentation events handled via WebRTC screen share
+use grafana::sfu::StatelessSfuRelay;
+use grafana::smtp::SmtpClient;
 
-const GAFANA_SFU_PORT: u16 = 8765;
-const GAFANA_HTTP_PORT: u16 = 7878;
+const GRAFANA_SFU_PORT: u16 = 8765;
+const GRAFANA_HTTP_PORT: u16 = 7878;
 
 fn main() {
     println!("=================================================================");
-    println!("  GAFANA ALL-IN-ONE VIDEO CALLING APPLIANCE (Rust Edition v1.2)  ");
+    println!("  GRAFANA ALL-IN-ONE VIDEO CALLING APPLIANCE (Rust Edition v1.2)  ");
     println!("  Zero-Cloud Data | 100% Unanimous Consensus | Pure Memory Mesh  ");
     println!("=================================================================\n");
 
@@ -33,11 +33,11 @@ fn main() {
     let sfu_packets = Arc::new(AtomicU64::new(0));
 
     // 1. Launch In-Memory Stateless SFU Relay Thread (UDP 8765)
-    println!("[1/4] Starting In-Memory Stateless SFU Relay on UDP port {}...", GAFANA_SFU_PORT);
+    println!("[1/4] Starting In-Memory Stateless SFU Relay on UDP port {}...", GRAFANA_SFU_PORT);
     let sfu_running = running.clone();
     let sfu_pkts = sfu_packets.clone();
     thread::spawn(move || {
-        let mut relay = StatelessSfuRelay::new(GAFANA_SFU_PORT);
+        let mut relay = StatelessSfuRelay::new(GRAFANA_SFU_PORT);
         relay.total_packets_forwarded = sfu_pkts;
         if let Err(e) = relay.run_loop(sfu_running) {
             eprintln!("[SFU Relay] Error: {}", e);
@@ -46,7 +46,7 @@ fn main() {
 
     let smtp_client = Arc::new(Mutex::new(SmtpClient::new()));
 
-    // 2. Initialize Core Gafana Engine
+    // 2. Initialize Core Grafana Engine
     println!("[2/4] Initializing Core Media Engine...");
     let callbacks = EngineCallbacks {
         on_peer_joined: Some(Box::new(|peer| {
@@ -96,27 +96,29 @@ fn main() {
     };
 
     let mut config = EngineConfig::default();
-    config.relay_port = GAFANA_SFU_PORT;
-    let engine = Arc::new(Mutex::new(GafanaEngine::new(config, callbacks)));
+    config.relay_port = GRAFANA_SFU_PORT;
+    let engine = Arc::new(Mutex::new(GrafanaEngine::new(config, callbacks)));
 
     let random_id = format!("host_{}", (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() % 9000) + 1000);
     {
         let mut eng = engine.lock().unwrap();
-        if let Err(e) = eng.join_room("Gafana-Secure-Room", &random_id, "Host User") {
+        if let Err(e) = eng.join_room("Grafana-Secure-Room", &random_id, "Host User") {
             eprintln!("Failed to join room: {}", e);
         }
     }
 
     // 3. Launch Embedded Web UI Server (TCP 7878)
-    println!("[3/4] Starting Embedded WebRTC UI Server on http://localhost:{}...", GAFANA_HTTP_PORT);
-    let signal_hub = Arc::new(Mutex::new(gafana::http::SignalHub::default()));
+    println!("[3/4] Starting Embedded WebRTC UI Server on http://localhost:{}...", GRAFANA_HTTP_PORT);
+    let signal_hub = Arc::new(Mutex::new(grafana::http::SignalHub::default()));
+    let auth_registry = Arc::new(Mutex::new(grafana::auth::AuthRegistry::new()));
     let http_config = HttpServerConfig {
-        port: GAFANA_HTTP_PORT,
+        port: GRAFANA_HTTP_PORT,
         sfu_packets: sfu_packets.clone(),
         running: running.clone(),
         smtp_client: smtp_client.clone(),
         engine: engine.clone(),
         signal_hub: signal_hub.clone(),
+        auth_registry: auth_registry.clone(),
     };
     EmbeddedHttpServer::new(http_config).start();
 
@@ -154,14 +156,14 @@ fn main() {
         }
     }
 
-    let lan_ip = gafana::http::detect_lan_ip();
-    let shareable_url = gafana::http::get_shareable_url(GAFANA_HTTP_PORT);
+    let lan_ip = grafana::http::detect_lan_ip();
+    let shareable_url = grafana::http::get_shareable_url(GRAFANA_HTTP_PORT);
 
-    println!("\n>>> Gafana (Rust Edition) is LIVE!");
-    println!(">>> Web UI (Local):        http://localhost:{}", GAFANA_HTTP_PORT);
+    println!("\n>>> Grafana (Rust Edition) is LIVE!");
+    println!(">>> Web UI (Local):        http://localhost:{}", GRAFANA_HTTP_PORT);
     println!(">>> Shareable Network URL: {}", shareable_url);
-    println!(">>> UDP Relay (LAN):       {}:{}", lan_ip, GAFANA_SFU_PORT);
-    println!(">>> Ephemeral Room:        'Gafana-Secure-Room' (Zero Cloud Retention)\n");
+    println!(">>> UDP Relay (LAN):       {}:{}", lan_ip, GRAFANA_SFU_PORT);
+    println!(">>> Ephemeral Room:        'Grafana-Secure-Room' (Zero Cloud Retention)\n");
 
     println!("Available Console Commands:");
     println!("  peers        - List active room participants");
@@ -172,11 +174,8 @@ fn main() {
     println!("  deny         - Vote NO (Veto) on pending ballot");
     println!("  revoke       - Revoke consent mid-call (emergency halt)");
     println!("  screen       - Toggle native screen sharing");
-    println!("  present      - Start presentation mode (10 slides)");
-    println!("  next         - Advance slide");
     println!("  stats        - Show relay in-memory packet throughput");
-    println!("  open         - Re-open web browser interface");
-    println!("  quit         - Exit and terminate Gafana\n");
+    println!("  quit         - Exit and terminate Grafana\n");
 
     print!("> ");
     let _ = io::stdout().flush();
@@ -184,7 +183,6 @@ fn main() {
     let stdin = io::stdin();
     let mut my_ballot = 0u32;
     let mut screen_track = 0u32;
-    let mut pres_track = 0u32;
 
     for line in stdin.lock().lines() {
         let cmd = match line {
@@ -239,7 +237,7 @@ fn main() {
             }
             "startrec" => {
                 let mut eng = engine.lock().unwrap();
-                let out_file = "gafana_local_capture.wav";
+                let out_file = "grafana_local_capture.wav";
                 match eng.start_recording(my_ballot, out_file) {
                     Ok(_) => println!("Local recording started: {} (ZERO cloud copies)", out_file),
                     Err(e) => println!("Blocked: {}", e),
@@ -274,62 +272,14 @@ fn main() {
                     screen_track = 0;
                 }
             }
-            "present" => {
-                let mut eng = engine.lock().unwrap();
-                if pres_track == 0 {
-                    match eng.start_presentation(10) {
-                        Ok(tid) => {
-                            pres_track = tid;
-                            println!("Presentation active (10 slides, Track #{})", tid);
-                        }
-                        Err(e) => println!("Presentation start error: {}", e),
-                    }
-                } else {
-                    let _ = eng.stop_presentation(pres_track);
-                    println!("Presentation stopped.");
-                    pres_track = 0;
-                }
-            }
-            "next" => {
-                let mut eng = engine.lock().unwrap();
-                if pres_track > 0 {
-                    let ev = PresentationEvent {
-                        event_type: PresEventType::SlideChange,
-                        current_slide: 2,
-                        total_slides: 10,
-                        pointer_x: 0.5,
-                        pointer_y: 0.5,
-                        color_hex: 0xFF0000,
-                    };
-                    let pkt = gafana::protocol::PktPresentation {
-                        event_type: ev.event_type as u8,
-                        current_slide: ev.current_slide,
-                        total_slides: ev.total_slides,
-                        pointer_x: ev.pointer_x,
-                        pointer_y: ev.pointer_y,
-                        color_hex: ev.color_hex,
-                    };
-                    let room_id = eng.room_id.clone();
-                    let self_id = eng.self_peer_id.clone();
-                    let _ = eng.net.send(&room_id, &self_id, gafana::protocol::GAFANA_OP_PRES_EVENT, &pkt.serialize());
-                    println!("Advanced to slide 2.");
-                } else {
-                    println!("Presentation not active. Type 'present' first.");
-                }
-            }
+
             "stats" => {
                 let count = sfu_packets.load(Ordering::Relaxed);
                 println!("Relay Stats: {} in-memory packets routed (0 bytes on server disk)", count);
             }
-            "open" => {
-                #[cfg(target_os = "windows")]
-                let _ = std::process::Command::new("cmd")
-                    .args(["/c", "start", "http://localhost:7878"])
-                    .spawn();
-                println!("Re-opened http://localhost:7878 in default browser.");
-            }
+
             other => {
-                println!("Unknown command '{}'. Try: peers, record, accept, deny, startrec, stoprec, screen, present, stats, open, quit", other);
+                println!("Unknown command '{}'. Try: peers, record, accept, deny, startrec, stoprec, screen, stats, quit", other);
             }
         }
 
@@ -337,11 +287,11 @@ fn main() {
         let _ = io::stdout().flush();
     }
 
-    println!("\nShutting down Gafana Appliance...");
+    println!("\nShutting down Grafana Appliance...");
     running.store(false, Ordering::Relaxed);
     {
         let mut eng = engine.lock().unwrap();
         let _ = eng.leave_room();
     }
-    println!("Gafana safely terminated. All ephemeral session memory discarded.");
+    println!("Grafana safely terminated. All ephemeral session memory discarded.");
 }

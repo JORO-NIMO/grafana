@@ -1,9 +1,9 @@
 use std::fmt;
 
-/// Gafana Error Codes mapping 1:1 with C `gafana_error_t`.
+/// Grafana Error Codes mapping 1:1 with C `grafana_error_t`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
-pub enum GafanaError {
+pub enum GrafanaError {
     Ok = 0,
     InvalidParam = -1,
     NotInitialized = -2,
@@ -24,15 +24,18 @@ pub enum GafanaError {
     OutOfMemory = -17,
     BufferOverflow = -18,
     Unsupported = -19,
+    Timeout = -20,
+    PermissionDenied = -21,
+    ConsensusRejected = -22,
 }
 
-impl GafanaError {
+impl GrafanaError {
     pub fn as_i32(&self) -> i32 {
         *self as i32
     }
 }
 
-impl fmt::Display for GafanaError {
+impl fmt::Display for GrafanaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ok => write!(f, "Success (OK)"),
@@ -55,13 +58,16 @@ impl fmt::Display for GafanaError {
             Self::OutOfMemory => write!(f, "Out of memory / capacity reached"),
             Self::BufferOverflow => write!(f, "Buffer overflow"),
             Self::Unsupported => write!(f, "Operation unsupported"),
+            Self::Timeout => write!(f, "Operation timed out"),
+            Self::PermissionDenied => write!(f, "Permission denied"),
+            Self::ConsensusRejected => write!(f, "Consensus rejected or unverified account"),
         }
     }
 }
 
-impl std::error::Error for GafanaError {}
+impl std::error::Error for GrafanaError {}
 
-pub type GafanaResult<T> = Result<T, GafanaError>;
+pub type GrafanaResult<T> = Result<T, GrafanaError>;
 
 #[cfg(test)]
 mod tests {
@@ -69,15 +75,15 @@ mod tests {
 
     #[test]
     fn test_error_codes_and_display() {
-        assert_eq!(GafanaError::Ok.as_i32(), 0);
-        assert_eq!(GafanaError::InvalidParam.as_i32(), -1);
-        assert_eq!(GafanaError::ConsentDenied.as_i32(), -8);
-        assert_eq!(GafanaError::ConsentRevoked.as_i32(), -9);
+        assert_eq!(GrafanaError::Ok.as_i32(), 0);
+        assert_eq!(GrafanaError::InvalidParam.as_i32(), -1);
+        assert_eq!(GrafanaError::ConsentDenied.as_i32(), -8);
+        assert_eq!(GrafanaError::ConsentRevoked.as_i32(), -9);
 
-        let err_str = format!("{}", GafanaError::ConsentDenied);
+        let err_str = format!("{}", GrafanaError::ConsentDenied);
         assert!(err_str.contains("vetoed"));
 
-        let io_str = format!("{}", GafanaError::Io);
+        let io_str = format!("{}", GrafanaError::Io);
         assert!(io_str.contains("disk I/O"));
     }
 }

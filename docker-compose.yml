@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+  # 1. Safe Spaces AI Innovation Hub - Grafana Pure-Rust Engine
+  grafana:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: safespaces-grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7878:7878"
+      - "50000-50100:50000-50100/udp"
+    environment:
+      - RUST_LOG=info
+      - GRAFANA_PUBLIC_URL=https://grafana.safespaceshub.com
+      - GRAFANA_DOMAIN=grafana.safespaceshub.com
+      - SMTP_HOST=stalwart
+      - SMTP_PORT=25
+      - SMTP_FROM=grafana@safespaceshub.com
+      - SMTP_NAME=Safe Spaces AI Innovation Hub
+      - FILEFRAN_URL=https://filefran.safespaceshub.com/api/v1/vault/sync
+    volumes:
+      - ./data:/app/data
+    networks:
+      - safespaces-net
+
+  # 2. Stalwart Secure All-in-One Mail Server
+  # Docs: https://stalw.art/docs/install/requirements/#supported-platforms
+  stalwart:
+    image: stalwartlabs/mail-server:latest
+    container_name: safespaces-stalwart
+    restart: unless-stopped
+    ports:
+      - "25:25"       # SMTP loopback & inbound
+      - "587:587"     # Submission STARTTLS
+      - "465:465"     # Submission SMTPS
+      - "993:993"     # IMAPS
+      - "127.0.0.1:8080:8080" # Web Admin Interface
+    volumes:
+      - ./stalwart-data:/opt/stalwart-mail
+    environment:
+      - STALWART_HOST=mail.safespaceshub.com
+    networks:
+      - safespaces-net
+
+  # 3. Caddy Reverse Proxy & Automatic Let's Encrypt TLS
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: safespaces-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3 QUIC
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data
+      - ./caddy-config:/config
+    depends_on:
+      - grafana
+    networks:
+      - safespaces-net
+
+networks:
+  safespaces-net:
+    driver: bridge
