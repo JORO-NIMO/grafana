@@ -158,7 +158,7 @@ d:/c test - rust/
 │       └── grafana_relay.rs       # Standalone SFU relay server binary
 ├── web/
 │   ├── index.html                # Clean UI with auth, cloud sync, admin & legal modals
-│   ├── style.css                 # Zero-emoji dark mode styling with glassmorphism
+│   ├── style.css                 # White and blue SaaS styling with Lucide SVG iconography and zero emojis
 │   └── grafana_web.js             # Production WebRTC media capture, auth & sync client
 └── README.md                     # Comprehensive architecture and compliance documentation
 ```
@@ -173,7 +173,7 @@ Run the full automated test suite:
 cargo test
 ```
 
-All 25 unit tests verify:
+All 26 unit tests verify:
 - Cryptographic SHA-256 standard vectors & token generation
 - Registration, 6-digit email confirmation lifecycle, and login authentication
 - Unanimous consensus recording, veto mechanisms, and mid-call revocation
